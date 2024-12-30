@@ -1,9 +1,9 @@
-import numpy as np
+import cupy as cp
 
 
 def validate_msize(options):
     if 'msize' in options:
-        if isinstance(options['msize'], (int, float, complex, np.number)):
+        if isinstance(options['msize'], (int, float, complex, cp.number)):
             # Extract orienNum value for texture difference or use default
             msize = options.get('msize', 3)
     elif 'msize' not in options:

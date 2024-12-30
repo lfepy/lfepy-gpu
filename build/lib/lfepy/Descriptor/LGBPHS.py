@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Helper import gabor_filter, descriptor_LBP, get_mapping
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_uniformLBP, validate_scaleNum, validate_orienNum
 
@@ -17,29 +19,12 @@ def LGBPHS(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            LGBPHS_hist (numpy.ndarray): Histogram(s) of LGBPHS descriptors.
+            LGBPHS_hist (cupy.ndarray): Histogram(s) of LGBPHS descriptors.
             imgDesc (list): List of dictionaries containing LGBPHS descriptors for each scale and orientation.
 
     Raises:
         TypeError: If the `image` is not a valid `numpy.ndarray`.
         ValueError: If the `mode` in `kwargs` is not a valid option.
-
-    Example:
-        >>> import matplotlib.pyplot as plt
-        >>> from matplotlib.image import imread
-
-        >>> image = imread("Path")
-        >>> histogram, imgDesc = LGBPHS(image, mode='nh', uniformLBP=1, scaleNum=5, orienNum=8)
-
-        >>> plt.imshow(imgDesc[0]['fea'], cmap='gray')
-        >>> plt.axis('off')
-        >>> plt.show()
-
-    References:
-        W. Zhang, S. Shan, W. Gao, X. Chen, and H. Zhang,
-        Local Gabor Binary Pattern Histogram Sequence (LGBPHS): A Novel Non-Statistical Model for Face Representation and Recognition,
-        ICCV 2005: Tenth IEEE International Conference on Computer Vision, IEEE,
-        2005, pp. 786-791.
     """
     # Input data validation
     image = validate_image(image)
@@ -49,8 +34,8 @@ def LGBPHS(image, **kwargs):
     scaleNum = validate_scaleNum(options)
     orienNum = validate_orienNum(options)
 
-    # Compute Gabor magnitude responses
-    gaborMag = np.abs(gabor_filter(image, 8, 5))
+    # Compute Gabor magnitude responses using CuPy
+    gaborMag = cp.abs(gabor_filter(image, 8, 5))
 
     options['binVec'] = []
     imgDesc = []
@@ -62,22 +47,22 @@ def LGBPHS(image, **kwargs):
             if uniformLBP == 1:
                 mapping = get_mapping(8, 'u2')
                 _, codeImg = descriptor_LBP(gaborResIns, 1, 8, mapping, 'uniform')
-                options['binVec'].append(np.arange(59))
+                options['binVec'].append(cp.arange(59))
             else:
                 _, codeImg = descriptor_LBP(gaborResIns, 1, 8, None, 'default')
-                options['binVec'].append(np.arange(256))
+                options['binVec'].append(cp.arange(256))
 
             imgDesc.append({'fea': codeImg})
 
-    # Compute LGBPHS histogram
+    # Compute LGBPHS histogram using CuPy
     LGBPHS_hist = []
     for s in range(len(imgDesc)):
         imgReg = imgDesc[s]['fea']
         for i, bin_val in enumerate(options['binVec'][s]):
-            hh = np.sum([imgReg == bin_val])
+            hh = cp.sum(imgReg == bin_val)
             LGBPHS_hist.append(hh)
-    LGBPHS_hist = np.array(LGBPHS_hist)
+    LGBPHS_hist = cp.array(LGBPHS_hist)
     if 'mode' in options and options['mode'] == 'nh':
-        LGBPHS_hist = LGBPHS_hist / np.sum(LGBPHS_hist)
+        LGBPHS_hist = LGBPHS_hist / cp.sum(LGBPHS_hist)
 
     return LGBPHS_hist, imgDesc

@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 
 
 def get_mapping_mrelbp(samples, mappingtype):
@@ -47,7 +47,7 @@ def get_mapping_mrelbp(samples, mappingtype):
         {'table': array([...]), 'samples': 8, 'num': 59}
     """
     num_all_LBPs = 2 ** samples  # Total number of possible LBPs
-    table = np.arange(num_all_LBPs)
+    table = cp.arange(num_all_LBPs, dtype=cp.int32)  # Initialize CuPy array
     new_max = 0
     index = 0
 
@@ -67,7 +67,7 @@ def get_mapping_mrelbp(samples, mappingtype):
 
     # Rotation invariant
     if mappingtype == 'ri':
-        tmp_map = np.full(num_all_LBPs, -1)
+        tmp_map = cp.full(num_all_LBPs, -1, dtype=cp.int32)
         for i in range(num_all_LBPs):
             rm = i
             r = i

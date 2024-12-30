@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Helper import gabor_filter
 from lfepy.Descriptor.LTrP import LTrP
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
@@ -15,8 +17,8 @@ def LGTrP(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            LGTrP_hist (numpy.ndarray): Histogram(s) of LGTrP descriptors.
-            imgDesc (numpy.ndarray): LGTrP descriptors.
+            LGTrP_hist (cupy.ndarray): Histogram(s) of LGTrP descriptors.
+            imgDesc (cupy.ndarray): LGTrP descriptors.
 
     Raises:
         TypeError: If the `image` is not a valid `numpy.ndarray`.
@@ -45,7 +47,7 @@ def LGTrP(image, **kwargs):
     options = validate_mode(options)
 
     # Compute LGTrP descriptor
-    gaborMag = np.abs(gabor_filter(image, 8, 1))
+    gaborMag = cp.abs(gabor_filter(image, 8, 1))
     gaborTotal = gaborMag[:, :, 0, 0]
 
     for o in range(1, 8):
@@ -55,13 +57,14 @@ def LGTrP(image, **kwargs):
     _, imgDesc = LTrP(imgDescGabor)
 
     # Set bin vector
-    options['binVec'] = np.arange(256)
+    options['binVec'] = cp.arange(256)
 
     # Compute LGTrP histogram
-    LGTrP_hist = np.zeros(len(options['binVec']))
+    LGTrP_hist = cp.zeros(len(options['binVec']), dtype=cp.float32)
     for i, bin_val in enumerate(options['binVec']):
-        LGTrP_hist[i] = np.sum([imgDesc == bin_val])
+        LGTrP_hist[i] = cp.sum(imgDesc == bin_val)
+
     if 'mode' in options and options['mode'] == 'nh':
-        LGTrP_hist = LGTrP_hist / np.sum(LGTrP_hist)
+        LGTrP_hist /= cp.sum(LGTrP_hist)
 
     return LGTrP_hist, imgDesc

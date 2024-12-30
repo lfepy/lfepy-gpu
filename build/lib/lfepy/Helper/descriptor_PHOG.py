@@ -1,5 +1,5 @@
-import numpy as np
-from scipy.ndimage import sobel
+import cupy as cp
+from cupyx.scipy.ndimage import sobel
 from skimage.color import rgb2gray
 from skimage.feature import canny
 from lfepy.Helper.bin_matrix import bin_matrix
@@ -14,7 +14,7 @@ def descriptor_PHOG(image, bin=8, angle=360, L=2, roi=None):
     for different levels of a pyramid and can be used for object recognition and image analysis.
 
     Args:
-        image (numpy.ndarray): Input image, which can be grayscale or RGB.
+        image (cupy.ndarray): Input image, which can be grayscale or RGB.
         bin (int, optional): Number of orientation bins for the histogram. Default is 8.
         angle (int, optional): Angle range for orientation. Can be 180 or 360 degrees. Default is 360.
         L (int, optional): Number of pyramid levels. Default is 2.
@@ -24,8 +24,8 @@ def descriptor_PHOG(image, bin=8, angle=360, L=2, roi=None):
     Returns:
         tuple: A tuple containing:
             p_hist (list): List of histograms for each pyramid level.
-            bh_roi (numpy.ndarray): Gradient magnitude matrix for the ROI.
-            bv_roi (numpy.ndarray): Gradient orientation matrix for the ROI.
+            bh_roi (cupy.ndarray): Gradient magnitude matrix for the ROI.
+            bv_roi (cupy.ndarray): Gradient orientation matrix for the ROI.
 
     Raises:
         ValueError: If:
@@ -55,15 +55,18 @@ def descriptor_PHOG(image, bin=8, angle=360, L=2, roi=None):
     else:
         G = image
 
+    # Move the image to GPU
+    G = cp.asarray(G)
+
     # Check if the grayscale image is not too uniform
-    if np.sum(G) > 100:
+    if cp.sum(G) > 100:
         # Compute edge map using Canny edge detector
-        E = canny(G)
+        E = canny(G.get())
 
         # Compute gradient magnitudes in x and y directions
         GradientX = sobel(G, axis=1)
         GradientY = sobel(G, axis=0)
-        Gr = np.sqrt(GradientX ** 2 + GradientY ** 2)
+        Gr = cp.sqrt(GradientX ** 2 + GradientY ** 2)
 
         # Avoid division by zero
         GradientX[GradientX == 0] = 1e-5
@@ -71,16 +74,16 @@ def descriptor_PHOG(image, bin=8, angle=360, L=2, roi=None):
         # Compute gradient orientation
         YX = GradientY / GradientX
         if angle == 180:
-            A = (np.arctan(YX) + (np.pi / 2)) * 180 / np.pi
+            A = (cp.arctan(YX) + (cp.pi / 2)) * 180 / cp.pi
         elif angle == 360:
-            A = (np.arctan2(GradientY, GradientX) + np.pi) * 180 / np.pi
+            A = (cp.arctan2(GradientY, GradientX) + cp.pi) * 180 / cp.pi
 
         # Compute orientation histograms
         bh, bv = bin_matrix(A, E, Gr, angle, bin)
     else:
         # Return empty histograms if the image is too uniform
-        bh = np.zeros_like(G)
-        bv = np.zeros_like(G)
+        bh = cp.zeros_like(G)
+        bv = cp.zeros_like(G)
 
     # Extract the region of interest (ROI) from the histograms
     bh_roi = bh[roi[0]:roi[1], roi[2]:roi[3]]

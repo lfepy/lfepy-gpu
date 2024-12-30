@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Helper import descriptor_LPQ
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_windowSize
 
@@ -15,11 +17,11 @@ def LPQ(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            LPQ_hist (numpy.ndarray): Histogram of LPQ descriptors.
-            imgDesc (numpy.ndarray): LPQ descriptors.
+            LPQ_hist (cupy.ndarray): Histogram of LPQ descriptors.
+            imgDesc (cupy.ndarray): LPQ descriptors.
 
     Raises:
-        TypeError: If the `image` is not a valid `numpy.ndarray`.
+        TypeError: If the `image` is not a valid `numpy.ndarray` or `cupy.ndarray`.
         ValueError: If the `mode` in `kwargs` is not a valid option.
 
     Example:
@@ -50,15 +52,21 @@ def LPQ(image, **kwargs):
     options = validate_mode(options)
     wSz = validate_windowSize(options)
 
-    imgDesc, _ = descriptor_LPQ(image, wSz)
+    # Ensure the image is a CuPy array (convert if necessary)
+    if isinstance(image, cp.ndarray):
+        imgDesc, _ = descriptor_LPQ(image, wSz)
+    else:
+        imgDesc, _ = descriptor_LPQ(cp.asarray(image), wSz)
 
-    options['binVec'] = np.arange(256)
+    options['binVec'] = cp.arange(256)  # Use CuPy for the bin vector
 
     # Compute LPQ histogram
-    LPQ_hist = np.zeros(len(options['binVec']))
+    LPQ_hist = cp.zeros(len(options['binVec']), dtype=cp.int32)
     for i, bin_val in enumerate(options['binVec']):
-        LPQ_hist[i] = np.sum([imgDesc == bin_val])
+        LPQ_hist[i] = cp.sum(imgDesc == bin_val)
+
+    # Normalize histogram if required
     if 'mode' in options and options['mode'] == 'nh':
-        LPQ_hist = LPQ_hist / np.sum(LPQ_hist)
+        LPQ_hist = LPQ_hist / cp.sum(LPQ_hist)
 
     return LPQ_hist, imgDesc

@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 
 
 def cirInterpSingleRadius_ct(img, lbpPoints, lbpRadius):
@@ -37,27 +37,27 @@ def cirInterpSingleRadius_ct(img, lbpPoints, lbpRadius):
     imgNewW = imgW - 2 * lbpRadius
 
     # Initialize the blocks array to store interpolated values
-    blocks = np.zeros((lbpPoints, imgNewH * imgNewW))
+    blocks = cp.zeros((lbpPoints, imgNewH * imgNewW))
 
     # Create circular pattern points
     radius = lbpRadius
     neighbors = lbpPoints
-    spoints = np.zeros((neighbors, 2))
-    angleStep = 2 * np.pi / neighbors
+    spoints = cp.zeros((neighbors, 2))
+    angleStep = 2 * cp.pi / neighbors
 
     for i in range(neighbors):
-        spoints[i, 0] = -radius * np.sin(i * angleStep)
-        spoints[i, 1] = radius * np.cos(i * angleStep)
+        spoints[i, 0] = -radius * cp.sin(i * angleStep)
+        spoints[i, 1] = radius * cp.cos(i * angleStep)
 
     # Calculate the size of the blocks considering boundary effects
-    miny, maxy = np.min(spoints[:, 0]), np.max(spoints[:, 0])
-    minx, maxx = np.min(spoints[:, 1]), np.max(spoints[:, 1])
+    miny, maxy = cp.min(spoints[:, 0]), cp.max(spoints[:, 0])
+    minx, maxx = cp.min(spoints[:, 1]), cp.max(spoints[:, 1])
 
-    bsizey = int(np.ceil(max(maxy, 0)) - np.floor(min(miny, 0)) + 1)
-    bsizex = int(np.ceil(max(maxx, 0)) - np.floor(min(minx, 0)) + 1)
+    bsizey = int(cp.ceil(max(maxy, 0)) - cp.floor(min(miny, 0)) + 1)
+    bsizex = int(cp.ceil(max(maxx, 0)) - cp.floor(min(minx, 0)) + 1)
 
-    origy = 1 - np.floor(min(miny, 0)).astype(int)
-    origx = 1 - np.floor(min(minx, 0)).astype(int)
+    origy = 1 - cp.floor(min(miny, 0)).astype(int)
+    origx = 1 - cp.floor(min(minx, 0)).astype(int)
 
     # Check if image size is sufficient
     if imgW < bsizex or imgH < bsizey:
@@ -72,10 +72,10 @@ def cirInterpSingleRadius_ct(img, lbpPoints, lbpRadius):
         y = spoints[i, 0] + origy
         x = spoints[i, 1] + origx
 
-        fy, cy, ry = np.floor(y).astype(int), np.ceil(y).astype(int), np.round(y).astype(int)
-        fx, cx, rx = np.floor(x).astype(int), np.ceil(x).astype(int), np.round(x).astype(int)
+        fy, cy, ry = cp.floor(y).astype(int), cp.ceil(y).astype(int), cp.round(y).astype(int)
+        fx, cx, rx = cp.floor(x).astype(int), cp.ceil(x).astype(int), cp.round(x).astype(int)
 
-        if np.abs(x - rx) < 1e-6 and np.abs(y - ry) < 1e-6:
+        if cp.abs(x - rx) < 1e-6 and cp.abs(y - ry) < 1e-6:
             imgNew = img[ry - 1:ry + dy, rx - 1:rx + dx]
             blocks[i, :] = imgNew.ravel()
         else:

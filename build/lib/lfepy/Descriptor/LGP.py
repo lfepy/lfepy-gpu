@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
 
@@ -43,25 +45,25 @@ def LGP(image, **kwargs):
     options = validate_mode(options)
 
     # Compute binary patterns for four pairs of pixels
-    a1a3 = np.double((image[:-2, :-2]) - (image[2:, 2:]) > 0)
-    a2a4 = np.double((image[:-2, 2:]) - (image[2:, :-2]) > 0)
+    a1a3 = ((image[:-2, :-2]) - (image[2:, 2:]) > 0)
+    a2a4 = ((image[:-2, 2:]) - (image[2:, :-2]) > 0)
     path1 = a1a3 * 2 + a2a4 * 1
 
-    b1b3 = np.double((image[:-2, 1:-1]) - (image[2:, 1:-1]) > 0)
-    b2b4 = np.double((image[1:-1, 2:]) - (image[1:-1, :-2]) > 0)
+    b1b3 = ((image[:-2, 1:-1]) - (image[2:, 1:-1]) > 0)
+    b2b4 = ((image[1:-1, 2:]) - (image[1:-1, :-2]) > 0)
     path2 = b1b3 * 2 + b2b4 * 1 + 4
 
     # Combine paths to form the final descriptor
     imgDesc = path1 + path2
 
     # Set bin vectors
-    options['binVec'] = np.arange(4, 11)
+    options['binVec'] = cp.arange(4, 11)  # CuPy array
 
     # Compute LGP histogram
-    LGP_hist = np.zeros(len(options['binVec']))
+    LGP_hist = cp.zeros(len(options['binVec']))  # CuPy array
     for i, bin_val in enumerate(options['binVec']):
-        LGP_hist[i] = np.sum([imgDesc == bin_val])
+        LGP_hist[i] = cp.sum(imgDesc == bin_val)  # CuPy sum operation
     if 'mode' in options and options['mode'] == 'nh':
-        LGP_hist = LGP_hist / np.sum(LGP_hist)
+        LGP_hist = LGP_hist / cp.sum(LGP_hist)  # Normalize histogram
 
     return LGP_hist, imgDesc

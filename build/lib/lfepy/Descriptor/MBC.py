@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Helper import monofilt, descriptor_LBP, lxp_phase
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_mbcMode
 
@@ -67,20 +69,18 @@ def MBC(image, **kwargs):
         radius = 3
         f1, h1f1, h2f1, A1, theta1, psi1 = monofilt(image, nscale, minWaveLength, mult, sigmaOnf, orientWrap)
         for v in range(nscale):
-            Tem_img = np.uint8((A1[v] - np.min(A1[v])) / (np.max(A1[v]) - np.min(A1[v])) * 255)
+            Tem_img = cp.array((A1[v] - cp.min(A1[v])) / (cp.max(A1[v]) - cp.min(A1[v])) * 255, dtype=cp.uint8)
             LBPHIST, _ = descriptor_LBP(Tem_img, radius, neigh, MAPPING, 'i')
-            matrix2 = np.zeros(np.shape(h1f1[v]))
-            matrix3 = np.zeros(np.shape(h2f1[v]))
-            matrix2[h1f1[v] > 0] = 0
+            matrix2 = cp.zeros(h1f1[v].shape)
+            matrix3 = cp.zeros(h2f1[v].shape)
             matrix2[h1f1[v] <= 0] = 1
             matrix2 = matrix2[radius:-radius, radius:-radius]
-            matrix3[h2f1[v] > 0] = 0
             matrix3[h2f1[v] <= 0] = 1
             matrix3 = matrix3[radius:-radius, radius:-radius]
-            N_LBPHIST = matrix2 * 512 + matrix3 * 256 + np.double(LBPHIST)
-            N_LBPHIST = np.uint16(N_LBPHIST)
+            N_LBPHIST = matrix2 * 512 + matrix3 * 256 + LBPHIST.astype(cp.float64)
+            N_LBPHIST = N_LBPHIST.astype(cp.uint16)
             imgDesc.append({'fea': N_LBPHIST})
-            options['binVec'].append(np.arange(1024))
+            options['binVec'].append(cp.arange(1024))
 
     # Orientation-based MBC
     elif options['mbcMode'] == 'O':
@@ -88,20 +88,18 @@ def MBC(image, **kwargs):
         radius = 4
         f1, h1f1, h2f1, A1, theta1, psi1 = monofilt(image, nscale, minWaveLength, mult, sigmaOnf, orientWrap)
         for v in range(nscale):
-            Tem_img = np.uint16((theta1[v] - np.min(theta1[v])) / (np.max(theta1[v]) - np.min(theta1[v])) * 360)
+            Tem_img = cp.array((theta1[v] - cp.min(theta1[v])) / (cp.max(theta1[v]) - cp.min(theta1[v])) * 360, dtype=cp.uint16)
             LBPHIST = lxp_phase(Tem_img, radius, neigh, 0, 'i')
-            matrix2 = np.zeros(np.shape(h1f1[v]))
-            matrix3 = np.zeros(np.shape(h2f1[v]))
-            matrix2[h1f1[v] > 0] = 0
+            matrix2 = cp.zeros(h1f1[v].shape)
+            matrix3 = cp.zeros(h2f1[v].shape)
             matrix2[h1f1[v] <= 0] = 1
             matrix2 = matrix2[radius + 1:-radius, radius + 1:-radius]
-            matrix3[h2f1[v] > 0] = 0
             matrix3[h2f1[v] <= 0] = 1
             matrix3 = matrix3[radius + 1:-radius, radius + 1:-radius]
-            N_LBPHIST = matrix2 * 512 + matrix3 * 256 + np.double(LBPHIST)
-            N_LBPHIST = np.uint16(N_LBPHIST)
+            N_LBPHIST = matrix2 * 512 + matrix3 * 256 + LBPHIST.astype(cp.float64)
+            N_LBPHIST = N_LBPHIST.astype(cp.uint16)
             imgDesc.append({'fea': N_LBPHIST})
-            options['binVec'].append(np.arange(1024))
+            options['binVec'].append(cp.arange(1024))
 
     # Phase-based MBC
     elif options['mbcMode'] == 'P':
@@ -109,30 +107,28 @@ def MBC(image, **kwargs):
         radius = 4
         f1, h1f1, h2f1, A1, theta1, psi1 = monofilt(image, nscale, minWaveLength, mult, sigmaOnf, orientWrap)
         for v in range(nscale):
-            Tem_img = np.uint16((psi1[v] - np.min(psi1[v])) / (np.max(psi1[v]) - np.min(psi1[v])) * 360)
+            Tem_img = cp.array((psi1[v] - cp.min(psi1[v])) / (cp.max(psi1[v]) - cp.min(psi1[v])) * 360, dtype=cp.uint16)
             LBPHIST = lxp_phase(Tem_img, radius, neigh, 0, 'i')
-            matrix2 = np.zeros(np.shape(h1f1[v]))
-            matrix3 = np.zeros(np.shape(h2f1[v]))
-            matrix2[h1f1[v] > 0] = 0
+            matrix2 = cp.zeros(h1f1[v].shape)
+            matrix3 = cp.zeros(h2f1[v].shape)
             matrix2[h1f1[v] <= 0] = 1
             matrix2 = matrix2[radius + 1:-radius, radius + 1:-radius]
-            matrix3[h2f1[v] > 0] = 0
             matrix3[h2f1[v] <= 0] = 1
             matrix3 = matrix3[radius + 1:-radius, radius + 1:-radius]
-            N_LBPHIST = matrix2 * 512 + matrix3 * 256 + np.double(LBPHIST)
-            N_LBPHIST = np.uint16(N_LBPHIST)
+            N_LBPHIST = matrix2 * 512 + matrix3 * 256 + LBPHIST.astype(cp.float64)
+            N_LBPHIST = N_LBPHIST.astype(cp.uint16)
             imgDesc.append({'fea': N_LBPHIST})
-            options['binVec'].append(np.arange(1024))
+            options['binVec'].append(cp.arange(1024))
 
     # Compute MBC histogram
     MBC_hist = []
     for s in range(len(imgDesc)):
         imgReg = imgDesc[s]['fea']
         for i, bin_val in enumerate(options['binVec'][s]):
-            hh = np.sum([imgReg == bin_val])
+            hh = cp.sum(imgReg == bin_val)
             MBC_hist.append(hh)
-    MBC_hist = np.array(MBC_hist)
+    MBC_hist = cp.array(MBC_hist)
     if 'mode' in options and options['mode'] == 'nh':
-        MBC_hist = MBC_hist / np.sum(MBC_hist)
+        MBC_hist = MBC_hist / cp.sum(MBC_hist)
 
     return MBC_hist, imgDesc

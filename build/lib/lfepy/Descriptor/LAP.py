@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
 
@@ -13,7 +15,7 @@ def LAP(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            LAP_hist (numpy.ndarray): Histogram(s) of LAP descriptors.
+            LAP_hist (cupy.ndarray): Histogram(s) of LAP descriptors.
             imgDesc (list): List of dictionaries containing LAP descriptors.
 
     Raises:
@@ -48,7 +50,7 @@ def LAP(image, **kwargs):
                  [(1, 5), (5, 1)], [(2, 5), (4, 1)], [(3, 5), (3, 1)], [(4, 5), (2, 1)]]
     x_c = image[2:-2, 2:-2]
     rSize, cSize = x_c.shape
-    pattern1 = np.zeros_like(x_c)
+    pattern1 = cp.zeros_like(x_c)
 
     for n in range(len(linkList1)):
         corner1 = linkList1[n][0]
@@ -57,7 +59,7 @@ def LAP(image, **kwargs):
         x_2 = image[corner2[0] - 1:corner2[0] + rSize - 1, corner2[1] - 1:corner2[1] + cSize - 1]
         pattern1 += ((x_1 - x_2) > 0).astype(float) * 2 ** (len(linkList1) - n - 1)
 
-    pattern2 = np.zeros_like(x_c)
+    pattern2 = cp.zeros_like(x_c)
     for n in range(len(linkList2)):
         corner1 = linkList2[n][0]
         corner2 = linkList2[n][1]
@@ -68,7 +70,7 @@ def LAP(image, **kwargs):
     imgDesc = [{'fea': pattern1}, {'fea': pattern2}]
 
     # Set bin vectors
-    binVec = [np.arange(0, 2 ** len(linkList1)), np.arange(0, 2 ** len(linkList2))]
+    binVec = [cp.arange(0, 2 ** len(linkList1)), cp.arange(0, 2 ** len(linkList2))]
     options['binVec'] = binVec
 
     # Compute LAP histogram
@@ -76,10 +78,10 @@ def LAP(image, **kwargs):
     for s in range(len(imgDesc)):
         imgReg = imgDesc[s]['fea']
         for i, bin_val in enumerate(options['binVec'][s]):
-            hh = np.sum([imgReg == bin_val])
+            hh = cp.sum(imgReg == bin_val)
             LAP_hist.append(hh)
-    LAP_hist = np.array(LAP_hist)
+    LAP_hist = cp.array(LAP_hist)
     if 'mode' in options and options['mode'] == 'nh':
-        LAP_hist = LAP_hist / np.sum(LAP_hist)
+        LAP_hist = LAP_hist / cp.sum(LAP_hist)
 
     return LAP_hist, imgDesc

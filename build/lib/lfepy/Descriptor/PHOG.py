@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Helper import descriptor_PHOG, phogDescriptor_hist
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_bin, validate_angle, validate_L
 
@@ -55,6 +57,10 @@ def PHOG(image, **kwargs):
     # Compute PHOG descriptors
     _, bh_roi, bv_roi = descriptor_PHOG(image, bin, angle, L, roi)
 
+    # Ensure descriptors are in CuPy arrays
+    bh_roi = cp.asarray(bh_roi)
+    bv_roi = cp.asarray(bv_roi)
+
     # Collect descriptors
     imgDesc = [{'fea': bh_roi}, {'fea': bv_roi}]
 
@@ -63,6 +69,6 @@ def PHOG(image, **kwargs):
 
     # Normalize the histogram if required
     if 'mode' in options and options['mode'] == 'nh':
-        PHOG_hist = PHOG_hist / np.sum(PHOG_hist)
+        PHOG_hist = PHOG_hist / cp.sum(PHOG_hist)
 
     return PHOG_hist, imgDesc

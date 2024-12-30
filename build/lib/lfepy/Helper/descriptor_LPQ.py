@@ -1,5 +1,5 @@
-import numpy as np
-from scipy.signal import convolve2d
+import cupy as cp
+from cupyx.scipy.signal import convolve2d
 
 
 def descriptor_LPQ(image, winSize=3, decorr=1, freqestim=1, mode='im'):
@@ -12,7 +12,7 @@ def descriptor_LPQ(image, winSize=3, decorr=1, freqestim=1, mode='im'):
     or a histogram based on the specified mode.
 
     Args:
-        image (numpy.ndarray): Grayscale input image. Must be a 2D array.
+        image (cupy.ndarray): Grayscale input image. Must be a 2D array.
         winSize (int, optional): Size of the window used for LPQ calculation. Must be an odd number ≥ 3. Default is 3.
         decorr (int, optional): Flag to apply decorrelation. 0 for no decorrelation, 1 for decorrelation. Default is 1.
         freqestim (int, optional): Frequency estimation method.
@@ -26,26 +26,8 @@ def descriptor_LPQ(image, winSize=3, decorr=1, freqestim=1, mode='im'):
 
     Returns:
         tuple: A tuple containing:
-            LPQdesc (numpy.ndarray): The LPQ descriptor of the image. Depending on `mode`, it could be an image or a histogram.
-            freqRespAll (numpy.ndarray): The frequency responses for all filter pairs.
-
-    Raises:
-        ValueError: If:
-            'image' is not a 2D array.
-            'winSize' is not an odd number or less than 3.
-            'decorr' is not 0 or 1.
-            'freqestim' is not 1, 2, or 3.
-            'mode' is not one of 'nh', 'h', or 'im'.
-
-    Example:
-        >>> import numpy as np
-        >>> from scipy import ndimage
-        >>> image = np.random.rand(100, 100)
-        >>> desc, freq_resp = descriptor_LPQ(image, winSize=5, decorr=1, freqestim=2, mode='h')
-        >>> print(desc.shape)
-        (256,)
-        >>> print(freq_resp.shape)
-        (100, 100, 8)
+            LPQdesc (cupy.ndarray): The LPQ descriptor of the image. Depending on `mode`, it could be an image or a histogram.
+            freqRespAll (cupy.ndarray): The frequency responses for all filter pairs.
     """
     # Initialize parameters
     rho = 0.90
@@ -68,91 +50,90 @@ def descriptor_LPQ(image, winSize=3, decorr=1, freqestim=1, mode='im'):
 
     # Initialize
     r = (winSize - 1) // 2
-    x = np.arange(-r, r + 1)
-    u = np.arange(1, r + 1)
+    x = cp.arange(-r, r + 1)
+    u = cp.arange(1, r + 1)
 
     # Form 1-D filters
     if freqestim == 1:  # STFT uniform window
-        w0 = np.ones_like(x)
-        w1 = np.exp(-2j * np.pi * x * STFTalpha)
-        w2 = np.conj(w1)
+        w0 = cp.ones_like(x)
+        w1 = cp.exp(-2j * cp.pi * x * STFTalpha)
+        w2 = cp.conj(w1)
     elif freqestim == 2:  # STFT Gaussian window
-        w0 = np.exp(-0.5 * (x / sigmaS) ** 2) / (np.sqrt(2 * np.pi) * sigmaS)
-        w1 = np.exp(-2j * np.pi * x * STFTalpha)
-        w2 = np.conj(w1)
-        gs = np.exp(-0.5 * (x / sigmaS) ** 2) / (np.sqrt(2 * np.pi) * sigmaS)
+        w0 = cp.exp(-0.5 * (x / sigmaS) ** 2) / (cp.sqrt(2 * cp.pi) * sigmaS)
+        w1 = cp.exp(-2j * cp.pi * x * STFTalpha)
+        w2 = cp.conj(w1)
+        gs = cp.exp(-0.5 * (x / sigmaS) ** 2) / (cp.sqrt(2 * cp.pi) * sigmaS)
         w0 *= gs
         w1 *= gs
         w2 *= gs
-        w1 -= np.mean(w1)
-        w2 -= np.mean(w2)
+        w1 -= cp.mean(w1)
+        w2 -= cp.mean(w2)
     elif freqestim == 3:  # Gaussian derivative quadrature filter pair
-        G0 = np.exp(-x ** 2 * (np.sqrt(2) * sigmaA) ** 2)
-        G1 = np.concatenate((np.zeros_like(u), u * np.exp(-u ** 2 * sigmaA ** 2), [0]))
-        G0 = G0 / np.max(np.abs(G0))
-        G1 = G1 / np.max(np.abs(G1))
-        w0 = np.real(np.fft.ifftshift(np.fft.ifft(np.fft.ifftshift(G0))))
-        w1 = np.fft.ifftshift(np.fft.ifft(np.fft.ifftshift(G1)))
-        w2 = np.conj(w1)
-        w0 = w0 / np.max(np.abs([np.real(np.max(w0)), np.imag(np.max(w0))]))
-        w1 = w1 / np.max(np.abs([np.real(np.max(w1)), np.imag(np.max(w1))]))
-        w2 = w2 / np.max(np.abs([np.real(np.max(w2)), np.imag(np.max(w2))]))
+        G0 = cp.exp(-x ** 2 * (cp.sqrt(2) * sigmaA) ** 2)
+        G1 = cp.concatenate((cp.zeros_like(u), u * cp.exp(-u ** 2 * sigmaA ** 2), [0]))
+        G0 = G0 / cp.max(cp.abs(G0))
+        G1 = G1 / cp.max(cp.abs(G1))
+        w0 = cp.real(cp.fft.ifftshift(cp.fft.ifft(cp.fft.ifftshift(G0))))
+        w1 = cp.fft.ifftshift(cp.fft.ifft(cp.fft.ifftshift(G1)))
+        w2 = cp.conj(w1)
+        w0 = w0 / cp.max(cp.abs([cp.real(cp.max(w0)), cp.imag(cp.max(w0))]))
+        w1 = w1 / cp.max(cp.abs([cp.real(cp.max(w1)), cp.imag(cp.max(w1))]))
+        w2 = w2 / cp.max(cp.abs([cp.real(cp.max(w2)), cp.imag(cp.max(w2))]))
 
     # Run filters to compute the frequency response in the four points. Store real and imaginary parts separately
-    filterResp = convolve2d(convolve2d(image, w0[:, np.newaxis], mode=convmode), w1[np.newaxis, :], mode=convmode)
-    freqResp = np.zeros((filterResp.shape[0], filterResp.shape[1], 8))
-    freqResp[:, :, 0] = np.real(filterResp)
-    freqResp[:, :, 1] = np.imag(filterResp)
-    filterResp = convolve2d(convolve2d(image, w1[:, np.newaxis], mode=convmode), w0[np.newaxis, :], mode=convmode)
-    freqResp[:, :, 2] = np.real(filterResp)
-    freqResp[:, :, 3] = np.imag(filterResp)
-    filterResp = convolve2d(convolve2d(image, w1[:, np.newaxis], mode=convmode), w1[np.newaxis, :], mode=convmode)
-    freqResp[:, :, 4] = np.real(filterResp)
-    freqResp[:, :, 5] = np.imag(filterResp)
-    filterResp = convolve2d(convolve2d(image, w1[:, np.newaxis], mode=convmode), w2[np.newaxis, :], mode=convmode)
-    freqResp[:, :, 6] = np.real(filterResp)
-    freqResp[:, :, 7] = np.imag(filterResp)
+    filterResp = convolve2d(convolve2d(image, w0[:, cp.newaxis], mode=convmode), w1[cp.newaxis, :], mode=convmode)
+    freqResp = cp.zeros((filterResp.shape[0], filterResp.shape[1], 8), dtype=cp.complex128)
+    freqResp[:, :, 0] = cp.real(filterResp)
+    freqResp[:, :, 1] = cp.imag(filterResp)
+    filterResp = convolve2d(convolve2d(image, w1[:, cp.newaxis], mode=convmode), w0[cp.newaxis, :], mode=convmode)
+    freqResp[:, :, 2] = cp.real(filterResp)
+    freqResp[:, :, 3] = cp.imag(filterResp)
+    filterResp = convolve2d(convolve2d(image, w1[:, cp.newaxis], mode=convmode), w1[cp.newaxis, :], mode=convmode)
+    freqResp[:, :, 4] = cp.real(filterResp)
+    freqResp[:, :, 5] = cp.imag(filterResp)
+    filterResp = convolve2d(convolve2d(image, w1[:, cp.newaxis], mode=convmode), w2[cp.newaxis, :], mode=convmode)
+    freqResp[:, :, 6] = cp.real(filterResp)
+    freqResp[:, :, 7] = cp.imag(filterResp)
     freqRespAll = filterResp
     freqRow, freqCol, freqNum = freqResp.shape
 
     # If decorrelation is used, compute covariance matrix and corresponding whitening transform
     if decorr == 1:
-        xp, yp = np.meshgrid(np.arange(1, winSize + 1), np.arange(1, winSize + 1))
-        pp = np.column_stack((xp.flatten(), yp.flatten()))
-        dd = np.linalg.norm(pp[:, np.newaxis] - pp[np.newaxis, :], axis=-1)
+        xp, yp = cp.meshgrid(cp.arange(1, winSize + 1), cp.arange(1, winSize + 1))
+        pp = cp.column_stack((xp.flatten(), yp.flatten()))
+        dd = cp.linalg.norm(pp[:, cp.newaxis] - pp[cp.newaxis, :], axis=-1)
         C = rho ** dd
-        q1 = np.outer(w0, w1)
-        q2 = np.outer(w1, w0)
-        q3 = np.outer(w1, w1)
-        q4 = np.outer(w1, w2)
-        u1, u2 = np.real(q1), np.imag(q1)
-        u3, u4 = np.real(q2), np.imag(q2)
-        u5, u6 = np.real(q3), np.imag(q3)
-        u7, u8 = np.real(q4), np.imag(q4)
-        M = np.array([u1.flatten(), u2.flatten(), u3.flatten(), u4.flatten(), u5.flatten(), u6.flatten(),
+        q1 = cp.outer(w0, w1)
+        q2 = cp.outer(w1, w0)
+        q3 = cp.outer(w1, w1)
+        q4 = cp.outer(w1, w2)
+        u1, u2 = cp.real(q1), cp.imag(q1)
+        u3, u4 = cp.real(q2), cp.imag(q2)
+        u5, u6 = cp.real(q3), cp.imag(q3)
+        u7, u8 = cp.real(q4), cp.imag(q4)
+        M = cp.array([u1.flatten(), u2.flatten(), u3.flatten(), u4.flatten(), u5.flatten(), u6.flatten(),
                       u7.flatten(), u8.flatten()])
         D = M @ C @ M.T
-        A = np.diag([1.000007, 1.000006, 1.000005, 1.000004, 1.000003, 1.000002, 1.000001, 1])
-        U, S, Vt = np.linalg.svd(A @ D @ A)
-        idx = np.argmax(np.abs(Vt), axis=0)
-        V = Vt * np.diag(1 - 2 * (Vt[idx, range(Vt.shape[1])] < -np.finfo(float).eps))
+        A = cp.diag([1.000007, 1.000006, 1.000005, 1.000004, 1.000003, 1.000002, 1.000001, 1])
+        U, S, Vt = cp.linalg.svd(A @ D @ A)
+        idx = cp.argmax(cp.abs(Vt), axis=0)
+        V = Vt * cp.diag(1 - 2 * (Vt[idx, range(Vt.shape[1])] < -cp.finfo(cp.float64).eps))
         freqResp = freqResp.reshape(freqRow * freqCol, freqNum)
         freqResp = (V.T @ freqResp.T).T
         freqResp = freqResp.reshape(freqRow, freqCol, freqNum)
 
-    LPQdesc = np.zeros_like(freqResp[:, :, 0])
-    for i in range(freqNum):
-        LPQdesc += (freqResp[:, :, i] > 0) * (2 ** i)
-
-    if mode == 'im':
-        LPQdesc = LPQdesc.astype(np.uint8)
+    LPQdesc = cp.zeros_like(freqResp[:, :, 0])
+    LPQdesc += cp.sum((freqResp > 0) * (2 ** cp.arange(freqNum)), axis=2)
 
     # Histogram if needed
+    if mode == 'im':
+        LPQdesc = cp.abs(LPQdesc).astype(cp.uint8)
+
     if mode == 'nh' or mode == 'h':
-        LPQdesc = np.histogram(LPQdesc.flatten(), bins=256, range=(0, 255))[0]
+        LPQdesc = cp.histogram(LPQdesc.flatten(), bins=256, range=(0, 255))[0]
 
     # Normalize histogram if needed
     if mode == 'nh':
-        LPQdesc = LPQdesc / np.sum(LPQdesc)
+        LPQdesc = LPQdesc / cp.sum(LPQdesc)
 
     return LPQdesc, freqRespAll

@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 from lfepy.Helper.roundn import roundn
 from lfepy.Helper.get_mapping import get_mapping
 
@@ -6,65 +6,34 @@ from lfepy.Helper.get_mapping import get_mapping
 def descriptor_LBP(*varargin):
     """
     Compute the Local Binary Pattern (LBP) of an image with various options for radius, neighbors, mapping, and mode.
-
-    The function computes the LBP of a grayscale image based on the provided parameters, including radius, number of
-    neighbors, and optional mapping and mode settings. It returns either the LBP histogram or the LBP code image.
-
-    Args:
-        image (numpy.ndarray): The input image, expected to be a 2D numpy array (grayscale).
-        radius (int, optional): The radius of the LBP. Determines the distance of the sampling points from the center pixel.
-        neighbors (int, optional): The number of sampling points in the LBP.
-        mapping (dict or None, optional): The mapping information for LBP codes. Should contain 'samples' and 'table' if provided. If `None`, no mapping is applied.
-        mode (str, optional): The mode for LBP calculation. Options are:
-            'h' (histogram): Returns LBP histogram.
-            'hist' (histogram): Same as 'h', returns LBP histogram.
-            'nh' (normalized histogram): Returns normalized LBP histogram. Default is 'nh'.
-
-    Returns:
-        tuple: A tuple containing:
-            result (numpy.ndarray): The LBP histogram or LBP image based on the `mode` parameter.
-            codeImage (numpy.ndarray): The LBP code image, which contains the LBP codes for each pixel.
-
-    Raises:
-        ValueError: If the number of input arguments is incorrect or if the provided `mapping` is incompatible with the number of `neighbors`.
-        ValueError: If the input image is too small for the given `radius`.
-        ValueError: If the dimensions of `spoints` are not valid.
-
-    Example:
-        >>> import numpy as np
-        >>> image = np.random.rand(100, 100)
-        >>> result, codeImage = descriptor_LBP(image, 1, 8, None, 'nh')
-        >>> print(result)
-        >>> print(codeImage)
+    Optimized for GPU using CuPy.
     """
     # Check the number of input arguments
     if len(varargin) < 1 or len(varargin) > 5:
         raise ValueError("Wrong number of input arguments")
 
-    image = varargin[0]
+    image = cp.asarray(varargin[0])  # Ensure input is a CuPy array
 
     if len(varargin) == 1:
-        # Default parameters
-        spoints = np.array([[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]])
+        spoints = cp.array([[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]])
         neighbors = 8
         mapping = get_mapping(8, 'riu2')
         mode = 'nh'
 
-    if (len(varargin) == 2) and (len(str(varargin[1])) == 1):
+    if len(varargin) == 2 and len(str(varargin[1])) == 1:
         raise ValueError('Input arguments')
 
-    if (len(varargin) > 2) and (len(str(varargin[1])) == 1):
+    if len(varargin) > 2 and len(str(varargin[1])) == 1:
         radius = varargin[1]
         neighbors = varargin[2]
 
-        spoints = np.zeros((neighbors, 2))
+        spoints = cp.zeros((neighbors, 2))
+        a = 2 * cp.pi / neighbors
 
-        # Angle step
-        a = 2 * np.pi / neighbors
-
-        for i in range(neighbors):
-            spoints[i, 0] = -radius * np.sin((i - 1) * a)
-            spoints[i, 1] = radius * np.cos((i - 1) * a)
+        # Vectorized approach for computing spoints
+        angles = (cp.arange(neighbors) - 1) * a
+        spoints[:, 0] = -radius * cp.sin(angles)
+        spoints[:, 1] = radius * cp.cos(angles)
 
         if len(varargin) >= 4:
             mapping = varargin[3]
@@ -78,8 +47,8 @@ def descriptor_LBP(*varargin):
         else:
             mode = 'h'
 
-    if (len(varargin) > 1) and (len(str(varargin[1])) > 1):
-        spoints = varargin[1]
+    if len(varargin) > 1 and len(str(varargin[1])) > 1:
+        spoints = cp.asarray(varargin[1])
         neighbors = spoints.shape[0]
 
         if len(varargin) >= 3:
@@ -94,97 +63,83 @@ def descriptor_LBP(*varargin):
         else:
             mode = 'nh'
 
-    # Determine the dimensions of the input image
     ysize, xsize = image.shape
+    miny, maxy = cp.min(spoints[:, 0]), cp.max(spoints[:, 0])
+    minx, maxx = cp.min(spoints[:, 1]), cp.max(spoints[:, 1])
 
-    miny = np.min(spoints[:, 0])
-    maxy = np.max(spoints[:, 0])
-    minx = np.min(spoints[:, 1])
-    maxx = np.max(spoints[:, 1])
+    bsizey = cp.ceil(cp.maximum(maxy, 0)) - cp.floor(cp.minimum(miny, 0))
+    bsizex = cp.ceil(cp.maximum(maxx, 0)) - cp.floor(cp.minimum(minx, 0))
 
-    # Block size, each LBP code is computed within a block of size bsizey*bsizex
-    bsizey = np.ceil(max(maxy, 0)) - np.floor(min(miny, 0))
-    bsizex = np.ceil(max(maxx, 0)) - np.floor(min(minx, 0))
+    origy = int(1 - cp.floor(cp.minimum(miny, 0)))
+    origx = int(1 - cp.floor(cp.minimum(minx, 0)))
 
-    # Coordinates of origin (0,0) in the block
-    origy = int(1 - np.floor(min(miny, 0)))
-    origx = int(1 - np.floor(min(minx, 0)))
-
-    # Minimum allowed size for the input image depends on the radius of the used LBP operator
     if xsize < bsizex or ysize < bsizey:
         raise ValueError("Too small input image. Should be at least (2*radius+1) x (2*radius+1)")
 
-    # Calculate dx and dy
     dx = int(xsize - bsizex)
     dy = int(ysize - bsizey)
 
-    # Fill the center pixel matrix C
     C = image[origy - 1:origy + dy - 1, origx - 1:origx + dx - 1]
-    d_C = np.double(C)
+    d_C = C.astype(cp.float64)
 
     bins = 2 ** neighbors
+    result = cp.zeros((dy, dx))
 
-    # Initialize the result matrix with zeros
-    result = np.zeros((dy, dx))
+    # Vectorized processing for each neighbor
+    y_coords = spoints[:, 0] + origy
+    x_coords = spoints[:, 1] + origx
 
-    # Compute the LBP code image
+    fy = cp.floor(y_coords)
+    cy = cp.ceil(y_coords)
+    ry = cp.round(y_coords)
+    fx = cp.floor(x_coords)
+    cx = cp.ceil(x_coords)
+    rx = cp.round(x_coords)
+
+    # Using meshgrid for indexing
+    fy_fx = cp.meshgrid(fy, fx, indexing='ij')
+    cy_cx = cp.meshgrid(cy, cx, indexing='ij')
+
     for i in range(neighbors):
-        y = spoints[i, 0] + origy
-        x = spoints[i, 1] + origx
-        # Calculate floors, ceils and rounds for the x and y
-        fy = int(np.floor(y))
-        cy = int(np.ceil(y))
-        ry = int(np.round(y))
-        fx = int(np.floor(x))
-        cx = int(np.ceil(x))
-        rx = int(np.round(x))
-        # Check if interpolation is needed
-        if (np.abs(x - rx) < 1e-6) and (np.abs(y - ry) < 1e-6):
-            # Interpolation is not needed, use original datatypes
-            N = image[ry - 1:ry + dy - 1, rx - 1:rx + dx - 1]
+        # Check if values are equal, else apply bilinear interpolation
+        if (cp.abs(x_coords[i] - rx[i]) < 1e-6) and (cp.abs(y_coords[i] - ry[i]) < 1e-6):
+            N = image[ry[i] - 1:ry[i] + dy - 1, rx[i] - 1:rx[i] + dx - 1]
             D = N >= C
         else:
-            # Interpolation needed, use double type images
-            ty = y - fy
-            tx = x - fx
+            ty = y_coords[i] - fy[i]
+            tx = x_coords[i] - fx[i]
 
-            # Calculate the interpolation weights
             w1 = roundn((1 - tx) * (1 - ty), -6)
             w2 = roundn(tx * (1 - ty), -6)
             w3 = roundn((1 - tx) * ty, -6)
             w4 = roundn(1 - w1 - w2 - w3, -6)
 
-            # Compute interpolated pixel values
-            N = w1 * image[fy - 1:fy + dy - 1, fx - 1:fx + dx - 1] + w2 * image[fy - 1:fy + dy - 1, cx - 1:cx + dx - 1] + \
-                w3 * image[cy - 1:cy + dy - 1, fx - 1:fx + dx - 1] + w4 * image[cy - 1:cy + dy - 1, cx - 1:cx + dx - 1]
+            N = (w1 * image[fy[i] - 1:fy[i] + dy - 1, fx[i] - 1:fx[i] + dx - 1] +
+                 w2 * image[fy[i] - 1:fy[i] + dy - 1, cx[i] - 1:cx[i] + dx - 1] +
+                 w3 * image[cy[i] - 1:cy[i] + dy - 1, fx[i] - 1:fx[i] + dx - 1] +
+                 w4 * image[cy[i] - 1:cy[i] + dy - 1, cx[i] - 1:cx[i] + dx - 1])
             N = roundn(N, -4)
             D = N >= d_C
 
-        # Update the result matrix
         v = 2 ** i
-        result = result + v * D
+        result += v * D
 
-    # Apply mapping if it is defined
     if isinstance(mapping, dict):
         bins = mapping['num']
-        for i in range(result.shape[0]):
-            for j in range(result.shape[1]):
-                result[i, j] = mapping['table'][int(result[i, j])]
-
+        result = cp.take(mapping['table'], result.flatten().astype(cp.int16))
+        result = result.reshape(dy, dx)
     codeImage = result
 
     if mode in ['h', 'hist', 'nh']:
-        # Return with LBP histogram if mode equals 'hist'
-        result = np.histogram(result, bins=np.arange(bins + 1))[0]
+        result = cp.histogram(result, bins=cp.arange(bins + 1))[0]
         if mode == 'nh':
-            result = result / np.sum(result)
+            result = result / cp.sum(result)
     else:
-        # Otherwise return a matrix of unsigned integers
-        if bins - 1 <= np.iinfo(np.uint8).max:
-            result = result.astype(np.uint8)
-        elif bins - 1 <= np.iinfo(np.uint16).max:
-            result = result.astype(np.uint16)
+        if bins - 1 <= cp.iinfo(cp.uint8).max:
+            result = result.astype(cp.uint8)
+        elif bins - 1 <= cp.iinfo(cp.uint16).max:
+            result = result.astype(cp.uint16)
         else:
-            result = result.astype(np.uint32)
+            result = result.astype(cp.uint32)
 
     return result, codeImage

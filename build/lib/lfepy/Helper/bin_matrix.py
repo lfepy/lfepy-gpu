@@ -1,5 +1,5 @@
-import numpy as np
-from scipy.ndimage import label
+import cupy as cp
+from cupyx.scipy.ndimage import label
 
 
 def bin_matrix(A, E, G, angle, bin):
@@ -7,16 +7,16 @@ def bin_matrix(A, E, G, angle, bin):
     Compute the bin matrix for a given angle map and gradient magnitude.
 
     Args:
-        A (numpy.ndarray): Angle map of the gradient directions.
-        E (numpy.ndarray): Binary edge map where edges are marked.
-        G (numpy.ndarray): Gradient magnitude map.
+        A (cupy.ndarray): Angle map of the gradient directions.
+        E (cupy.ndarray): Binary edge map where edges are marked.
+        G (cupy.ndarray): Gradient magnitude map.
         angle (float): Total range of angles in degrees (e.g., 360 for full circle).
         bin (int): Number of bins to divide the angle range into.
 
     Returns:
         tuple:
-            bm (numpy.ndarray): Bin matrix with assigned bins for each pixel.
-            bv (numpy.ndarray): Gradient magnitude values corresponding to the bin matrix.
+            bm (cupy.ndarray): Bin matrix with assigned bins for each pixel.
+            bv (cupy.ndarray): Gradient magnitude values corresponding to the bin matrix.
 
     Example:
         >>> import numpy as np
@@ -34,28 +34,30 @@ def bin_matrix(A, E, G, angle, bin):
          [3. 4.]]
     """
     # Label connected components in the edge map
-    contorns, n = label(E)
-    Y, X = E.shape
+    contorns, n = label(cp.array(E))
 
-    # Initialize bin matrix and gradient magnitude matrix
-    bm = np.zeros((Y, X), dtype=int)
-    bv = np.zeros((Y, X), dtype=float)
-
-    # Calculate the angle range per bin
+    # Get the angle range per bin
     nAngle = angle / bin
 
-    # Iterate over each labeled region (edge component)
-    for i in range(1, n + 1):
-        posY, posX = np.where(contorns == i)  # Get coordinates of the current edge component
+    # Vectorized bin index calculation based on the angle
+    binned_angle = cp.ceil(A / nAngle).astype(cp.int32)
+    binned_angle[binned_angle == 0] = 1  # Ensure bin index starts from 1
 
-        for y, x in zip(posY, posX):
-            # Determine the bin index based on the angle
-            b = int(np.ceil(A[y, x] / nAngle))
-            if b == 0:
-                b = 1
-            if G[y, x] > 0:
-                # Assign the bin index and gradient magnitude
-                bm[y, x] = b
-                bv[y, x] = G[y, x]
+    # Initialize bin matrix and gradient magnitude matrix
+    bm = cp.zeros_like(E, dtype=cp.int32)
+    bv = cp.zeros_like(E, dtype=cp.float32)
+
+    # Mask for valid gradient values
+    valid_gradients = G > 0
+
+    unique_labels = cp.unique(contorns)[1:]
+
+    # Create a mask for all regions and valid gradients
+    region_mask = cp.isin(contorns, unique_labels)
+    region_valid = region_mask & valid_gradients
+
+    # Assign the binned angle and gradient values for the valid regions
+    bm = cp.where(region_valid, binned_angle, bm)
+    bv = cp.where(region_valid, G, bv)
 
     return bm, bv

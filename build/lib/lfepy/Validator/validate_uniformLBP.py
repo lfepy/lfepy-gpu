@@ -1,9 +1,9 @@
-import numpy as np
+import cupy as cp
 
 
 def validate_uniformLBP(options):
     if 'uniformLBP' in options:
-        if isinstance(options['uniformLBP'], (int, float, complex, np.number)):
+        if isinstance(options['uniformLBP'], (int, float, complex, cp.number)):
             # Extract uniformLBP value for texture difference or use default
             uniformLBP = options.get('uniformLBP', 1)
     elif 'uniformLBP' not in options:

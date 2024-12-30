@@ -1,9 +1,9 @@
-import numpy as np
+import cupy as cp
 
 
 def validate_angle(options):
     if 'angle' in options:
-        if isinstance(options['angle'], (int, float, complex, np.number)):
+        if isinstance(options['angle'], (int, float, complex, cp.number)):
             # Extract angle value for texture difference or use default
             angle = options.get('angle', 360)
     elif 'angle' not in options:

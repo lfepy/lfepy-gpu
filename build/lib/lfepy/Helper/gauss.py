@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 
 
 def gauss(x, sigma):
@@ -19,4 +19,4 @@ def gauss(x, sigma):
         array([0.39894228, 0.24197072, 0.05399097])
     """
     # Compute the Gaussian function value
-    return np.exp(-x ** 2 / (2 * sigma ** 2)) / (sigma * np.sqrt(2 * np.pi))
+    return cp.exp(-x ** 2 / (2 * sigma ** 2)) / (sigma * cp.sqrt(2 * cp.pi))

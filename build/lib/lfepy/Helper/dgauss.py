@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 from lfepy.Helper.gauss import gauss
 
 

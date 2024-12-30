@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 
 
 def low_pass_filter(size, cutoff, n):
@@ -38,14 +38,14 @@ def low_pass_filter(size, cutoff, n):
         rows, cols = size
 
     # Create coordinate grid
-    xrange = np.arange(-(cols - 1) / 2, (cols - 1) / 2 + 1) / (cols - 1)
-    yrange = np.arange(-(rows - 1) / 2, (rows - 1) / 2 + 1) / (rows - 1)
+    xrange = cp.arange(-(cols - 1) / 2, (cols - 1) / 2 + 1) / (cols - 1)
+    yrange = cp.arange(-(rows - 1) / 2, (rows - 1) / 2 + 1) / (rows - 1)
 
-    x, y = np.meshgrid(xrange, yrange)
-    radius = np.sqrt(x ** 2 + y ** 2)
+    x, y = cp.meshgrid(xrange, yrange)
+    radius = cp.sqrt(x ** 2 + y ** 2)
 
     # Calculate Butterworth filter
     f = 1 / (1 + (radius / cutoff) ** (2 * n))
 
     # Shift the filter to center it
-    return np.fft.ifftshift(f)
+    return cp.fft.ifftshift(f)

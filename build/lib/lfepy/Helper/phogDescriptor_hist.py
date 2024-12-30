@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 
 
 def phogDescriptor_hist(bh, bv, L, bin):
@@ -10,8 +10,8 @@ def phogDescriptor_hist(bh, bv, L, bin):
     of gradients and the gradient magnitude matrix `bv` to compute the histogram values.
 
     Args:
-        bh (numpy.ndarray): Bin matrix of the image, where each pixel is assigned a bin index.
-        bv (numpy.ndarray): Gradient magnitude matrix corresponding to the bin matrix.
+        bh (cupy.ndarray): Bin matrix of the image, where each pixel is assigned a bin index.
+        bv (cupy.ndarray): Gradient magnitude matrix corresponding to the bin matrix.
         L (int): Number of pyramid levels.
         bin (int): Number of bins for the histogram.
 
@@ -33,7 +33,7 @@ def phogDescriptor_hist(bh, bv, L, bin):
     # Compute histogram for level 0 (original image)
     for b in range(1, bin + 1):
         ind = (bh == b)
-        p.append(np.sum(bv[ind]))
+        p.append(cp.sum(bv[ind]))  # Use cp.sum() for GPU operations
 
     # Compute histograms for pyramid levels
     for l in range(1, L + 1):
@@ -52,16 +52,16 @@ def phogDescriptor_hist(bh, bv, L, bin):
                 # Compute histogram for each cell
                 for b in range(1, bin + 1):
                     ind = (bh_cella == b)
-                    p.append(np.sum(bv_cella[ind]))
+                    p.append(cp.sum(bv_cella[ind]))  # Use cp.sum() for GPU operations
 
                 yy += y
             xx += x
 
-    # Convert list to numpy array
-    p = np.array(p)
+    # Convert list to CuPy array
+    p = cp.array(p)
 
     # Normalize the histogram
-    if np.sum(p) != 0:
-        p = p / np.sum(p)
+    if cp.sum(p) != 0:
+        p = p / cp.sum(p)
 
     return p

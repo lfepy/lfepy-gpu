@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 
 
 def view_as_windows(arr, window_shape, step=1):
@@ -25,22 +25,23 @@ def view_as_windows(arr, window_shape, step=1):
                [2, 3],
                [3, 4]])
     """
-    # Convert input to numpy array
-    arr = np.asarray(arr)
+    arr = cp.array(arr)
 
-    # Ensure window_shape and step are numpy arrays of at least 1 dimension
-    window_shape = np.atleast_1d(window_shape)
-    step = np.atleast_1d(step)
+    # Ensure window_shape and step are CuPy arrays of at least 1 dimension
+    window_shape = cp.atleast_1d(window_shape)
+    step = cp.atleast_1d(step)
 
     # Check if any window dimension is larger than the corresponding array dimension
-    if np.any(np.array(window_shape) > np.array(arr.shape)):
+    if cp.any(cp.array(window_shape) > cp.array(arr.shape)):
         raise ValueError("Window shape must be smaller than array shape.")
 
     # Calculate the shape of the new view with sliding windows
-    shape = tuple(np.subtract(arr.shape, window_shape) // step + 1) + tuple(window_shape)
+    shape = tuple(cp.subtract(cp.array(arr.shape), window_shape) // step + 1) + tuple(window_shape)
+    shape = tuple(map(int, shape))
 
     # Calculate the strides of the new view
     strides = arr.strides * 2
+    strides = tuple(map(int, strides))
 
-    # Create the new view using np.lib.stride_tricks.as_strided
-    return np.lib.stride_tricks.as_strided(arr, shape=shape, strides=strides)
+    # Create the new view using cp.lib.stride_tricks.as_strided
+    return cp.lib.stride_tricks.as_strided(arr, shape=shape, strides=strides)
