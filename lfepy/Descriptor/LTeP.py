@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_t_LTeP
 
 
@@ -14,7 +16,7 @@ def LTeP(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            LTeP_hist (numpy.ndarray): Histogram(s) of LTeP descriptors.
+            LTeP_hist (cupy.ndarray): Histogram(s) of LTeP descriptors.
             imgDesc (list of dicts): List of dictionaries containing LTeP descriptors.
 
     Raises:
@@ -49,8 +51,8 @@ def LTeP(image, **kwargs):
     cSize = image.shape[1] - 2
 
     # Define link list for LTeP computation
-    link = np.array([[2, 1], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1]])
-    ImgIntensity = np.zeros((rSize * cSize, 8))
+    link = cp.array([[2, 1], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1]])
+    ImgIntensity = cp.zeros((rSize * cSize, 8))
 
     # Compute LTeP descriptors
     for n in range(link.shape[0]):
@@ -59,24 +61,24 @@ def LTeP(image, **kwargs):
 
     centerMat = image[1:-1, 1:-1].flatten()
 
-    Pltp = np.double(ImgIntensity > (centerMat[:, None] + t))
-    Nltp = np.double(ImgIntensity < (centerMat[:, None] - t))
+    Pltp = ImgIntensity > (centerMat[:, None] + t)
+    Nltp = ImgIntensity < (centerMat[:, None] - t)
 
-    imgDesc = [{'fea': Pltp.dot(2**np.arange(Pltp.shape[-1])).reshape(rSize, cSize)},
-               {'fea': Nltp.dot(2**np.arange(Nltp.shape[-1])).reshape(rSize, cSize)}]
+    imgDesc = [{'fea': Pltp.dot(2 ** cp.arange(Pltp.shape[-1])).reshape(rSize, cSize)},
+               {'fea': Nltp.dot(2 ** cp.arange(Nltp.shape[-1])).reshape(rSize, cSize)}]
 
     # Set bin vectors
-    options['binVec'] = [np.arange(256), np.arange(256)]
+    options['binVec'] = [cp.arange(256), cp.arange(256)]
 
     # Compute LTeP histogram
     LTeP_hist = []
     for s in range(len(imgDesc)):
         imgReg = imgDesc[s]['fea']
         for i, bin_val in enumerate(options['binVec'][s]):
-            hh = np.sum([imgReg == bin_val])
+            hh = cp.sum(imgReg == bin_val)
             LTeP_hist.append(hh)
-    LTeP_hist = np.array(LTeP_hist)
+    LTeP_hist = cp.array(LTeP_hist)
     if 'mode' in options and options['mode'] == 'nh':
-        LTeP_hist = LTeP_hist / np.sum(LTeP_hist)
+        LTeP_hist = LTeP_hist / cp.sum(LTeP_hist)
 
     return LTeP_hist, imgDesc

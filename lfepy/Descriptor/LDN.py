@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Helper import descriptor_LDN
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_mask_LDN, validate_msize
 
@@ -17,7 +19,7 @@ def LDN(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            LDN_hist (numpy.ndarray): Histogram(s) of LDN descriptors.
+            LDN_hist (cupy.ndarray): Histogram(s) of LDN descriptors.
             imgDesc (list): List of dictionaries containing LDN descriptors.
 
     Raises:
@@ -52,7 +54,7 @@ def LDN(image, **kwargs):
     options['binVec'] = []
 
     # Set bin vector
-    uniqueBin = np.array([1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17,
+    uniqueBin = cp.array([1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17,
                           19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33,
                           34, 35, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49,
                           50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62])
@@ -76,10 +78,10 @@ def LDN(image, **kwargs):
     for s in range(len(imgDesc)):
         imgReg = imgDesc[s]['fea']
         for i, bin_val in enumerate(options['binVec'][s]):
-            hh = np.sum([imgReg == bin_val])
+            hh = cp.sum(imgReg == bin_val)
             LDN_hist.append(hh)
-    LDN_hist = np.array(LDN_hist)
+    LDN_hist = cp.array(LDN_hist)
     if 'mode' in options and options['mode'] == 'nh':
-        LDN_hist = LDN_hist / np.sum(LDN_hist)
+        LDN_hist = LDN_hist / cp.sum(LDN_hist)
 
     return LDN_hist, imgDesc

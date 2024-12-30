@@ -1,13 +1,13 @@
 import unittest
-import numpy as np
-from lfepy.Descriptor import MTP  # Replace with the actual module name
+import cupy as cp
+from lfepy.Descriptor import MTP
 
 
 class TestMTP(unittest.TestCase):
 
     def setUp(self):
         # Create a sample image for testing (e.g., 8x8 grayscale image)
-        self.image = np.array([
+        self.image = cp.array([
             [52, 55, 61, 59, 79, 61, 76, 61],
             [62, 59, 55, 104, 94, 85, 59, 71],
             [63, 65, 66, 113, 144, 104, 63, 72],
@@ -16,23 +16,23 @@ class TestMTP(unittest.TestCase):
             [68, 79, 60, 70, 77, 66, 58, 75],
             [69, 85, 64, 58, 55, 61, 65, 83],
             [70, 87, 69, 68, 65, 73, 78, 90]
-        ], dtype=np.uint8)
+        ], dtype=cp.uint8)
 
     def test_mtp_default_params(self):
         # Test MTP with default parameters
         mtp_hist, imgDesc = MTP(self.image)
-        self.assertIsInstance(mtp_hist, np.ndarray)
+        self.assertIsInstance(mtp_hist, cp.ndarray)  # Changed to cupy array
         self.assertIsInstance(imgDesc, list)
         self.assertEqual(len(imgDesc), 2)  # There should be 2 descriptors (positive and negative)
         self.assertTrue(len(mtp_hist) > 0)  # Check that histogram is not empty
         for desc in imgDesc:
             self.assertIn('fea', desc)
-            self.assertIsInstance(desc['fea'], np.ndarray)
+            self.assertIsInstance(desc['fea'], cp.ndarray)  # Changed to cupy array
 
     def test_mtp_custom_mode(self):
         # Test MTP with custom mode
         mtp_hist, imgDesc = MTP(self.image, mode='nh')
-        self.assertIsInstance(mtp_hist, np.ndarray)
+        self.assertIsInstance(mtp_hist, cp.ndarray)  # Changed to cupy array
         self.assertIsInstance(imgDesc, list)
         self.assertEqual(len(imgDesc), 2)
         self.assertTrue(len(mtp_hist) > 0)
@@ -40,7 +40,7 @@ class TestMTP(unittest.TestCase):
     def test_mtp_custom_threshold(self):
         # Test MTP with a custom threshold value
         mtp_hist, imgDesc = MTP(self.image, t=20)
-        self.assertIsInstance(mtp_hist, np.ndarray)
+        self.assertIsInstance(mtp_hist, cp.ndarray)  # Changed to cupy array
         self.assertIsInstance(imgDesc, list)
         self.assertEqual(len(imgDesc), 2)
         self.assertTrue(len(mtp_hist) > 0)
@@ -67,7 +67,7 @@ class TestMTP(unittest.TestCase):
         self.assertEqual(len(imgDesc), 2)
         for desc in imgDesc:
             self.assertTrue('fea' in desc)
-            self.assertIsInstance(desc['fea'], np.ndarray)
+            self.assertIsInstance(desc['fea'], cp.ndarray)  # Changed to cupy array
 
 
 if __name__ == '__main__':

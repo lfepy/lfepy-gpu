@@ -1,13 +1,13 @@
 import unittest
-import numpy as np
-from lfepy.Descriptor import LDiP  # Replace with the actual module name
+import cupy as cp
+from lfepy.Descriptor import LDiP
 
 
 class TestLDiP(unittest.TestCase):
 
     def setUp(self):
         # Create a sample image for testing (e.g., 8x8 grayscale image)
-        self.image = np.array([
+        self.image = cp.array([
             [52, 55, 61, 59, 79, 61, 76, 61],
             [62, 59, 55, 104, 94, 85, 59, 71],
             [63, 65, 66, 113, 144, 104, 63, 72],
@@ -16,28 +16,28 @@ class TestLDiP(unittest.TestCase):
             [68, 79, 60, 70, 77, 66, 58, 75],
             [69, 85, 64, 58, 55, 61, 65, 83],
             [70, 87, 69, 68, 65, 73, 78, 90]
-        ], dtype=np.uint8)
+        ], dtype=cp.uint8)
 
     def test_ldip_default_mode(self):
         # Test LDiP with default parameters
         ldip_hist, imgDesc = LDiP(self.image)
-        self.assertIsInstance(ldip_hist, np.ndarray)
-        self.assertIsInstance(imgDesc, np.ndarray)
+        self.assertIsInstance(ldip_hist, cp.ndarray)
+        self.assertIsInstance(imgDesc, cp.ndarray)
         self.assertEqual(imgDesc.shape, self.image.shape)  # Check if imgDesc has the same shape as the input image
         self.assertEqual(ldip_hist.ndim, 1)  # Should be a 1D array
 
     def test_ldip_histogram_mode(self):
         # Test LDiP with histogram mode ('h')
         ldip_hist, imgDesc = LDiP(self.image, mode='h')
-        self.assertIsInstance(ldip_hist, np.ndarray)
-        self.assertIsInstance(imgDesc, np.ndarray)
+        self.assertIsInstance(ldip_hist, cp.ndarray)
+        self.assertIsInstance(imgDesc, cp.ndarray)
         self.assertEqual(imgDesc.shape, self.image.shape)  # Check if imgDesc has the same shape as the input image
         self.assertEqual(ldip_hist.ndim, 1)  # Should be a 1D array
 
     def test_ldip_normalization_mode(self):
         # Test if the LDiP histogram is normalized in 'nh' mode
         ldip_hist, _ = LDiP(self.image, mode='nh')
-        self.assertAlmostEqual(np.sum(ldip_hist), 1.0)
+        self.assertAlmostEqual(cp.sum(ldip_hist).get(), 1.0)  # Use `.get()` to transfer data to CPU
 
     def test_ldip_invalid_mode(self):
         # Test LDiP with an invalid mode
@@ -50,7 +50,7 @@ class TestLDiP(unittest.TestCase):
             LDiP(None)
 
     def test_ldip_with_non_array_image(self):
-        # Test LDiP with a non-numpy array image
+        # Test LDiP with a non-CuPy array image
         with self.assertRaises(TypeError):
             LDiP("invalid_image")
 
@@ -62,9 +62,9 @@ class TestLDiP(unittest.TestCase):
     def test_ldip_feature_extraction(self):
         # Check if the feature extraction part of LDiP works
         ldip_hist, imgDesc = LDiP(self.image)
-        self.assertTrue(np.any(imgDesc >= 0))  # Check if imgDesc contains non-negative values
-        unique_values = np.unique(imgDesc)
-        self.assertTrue(np.all(np.in1d(unique_values, np.array([
+        self.assertTrue(cp.any(imgDesc >= 0))  # Check if imgDesc contains non-negative values
+        unique_values = cp.unique(imgDesc)
+        self.assertTrue(cp.all(cp.in1d(unique_values, cp.array([
             7, 11, 13, 14, 19, 21, 22, 25, 26, 28, 35, 37, 38, 41, 42, 44,
             49, 50, 52, 56, 67, 69, 70, 73, 74, 76, 81, 82, 84, 88, 97, 98,
             100, 104, 112, 131, 133, 134, 137, 138, 140, 145, 146, 148, 152,

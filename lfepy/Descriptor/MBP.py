@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
 
@@ -13,8 +15,8 @@ def MBP(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            MBP_hist (numpy.ndarray): Histogram(s) of MBP descriptors.
-            imgDesc (numpy.ndarray): MBP descriptors.
+            MBP_hist (cupy.ndarray): Histogram(s) of MBP descriptors.
+            imgDesc (cupy.ndarray): MBP descriptors.
 
     Raises:
         TypeError: If `image` is not a valid `numpy.ndarray`.
@@ -47,8 +49,8 @@ def MBP(image, **kwargs):
     cSize = image.shape[1] - 2
 
     # Define link list for MBP computation
-    link = np.array([[2, 1], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1]])
-    ImgIntensity = np.zeros((rSize * cSize, link.shape[0]))
+    link = cp.array([[2, 1], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1]], dtype=cp.int32)
+    ImgIntensity = cp.zeros((rSize * cSize, link.shape[0]), dtype=cp.float64)
 
     # Compute MBP descriptors
     for n in range(link.shape[0]):
@@ -56,18 +58,20 @@ def MBP(image, **kwargs):
         x_slice = image[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1]
         ImgIntensity[:, n] = x_slice.reshape(-1)
 
-    medianMat = np.median(ImgIntensity, axis=1)
-    MBP = np.double(ImgIntensity > medianMat.reshape(-1, 1))
-    imgDesc = np.array([int(''.join(map(str, row.astype(np.uint8))), 2) for row in MBP]).reshape(rSize, cSize)
+    medianMat = cp.median(ImgIntensity, axis=1)
+    MBP = (ImgIntensity > medianMat.reshape(-1, 1))
+
+    imgDesc = cp.dot(MBP.astype(cp.uint8), 1 << cp.arange(MBP.shape[1] - 1, -1, -1)).reshape(rSize, cSize)
 
     # Set bin vectors
-    options['binVec'] = np.arange(256)
+    options['binVec'] = cp.arange(256)  # CuPy array for bin vectors
 
     # Compute MBP histogram
-    MBP_hist = np.zeros(len(options['binVec']))
+    MBP_hist = cp.zeros(len(options['binVec']), dtype=cp.float64)  # CuPy array for histogram
     for i, bin_val in enumerate(options['binVec']):
-        MBP_hist[i] = np.sum([imgDesc == bin_val])
+        MBP_hist[i] = cp.sum(imgDesc == bin_val)  # CuPy sum operation
+
     if 'mode' in options and options['mode'] == 'nh':
-        MBP_hist = MBP_hist / np.sum(MBP_hist)
+        MBP_hist = MBP_hist / cp.sum(MBP_hist)  # Normalize histogram using CuPy sum
 
     return MBP_hist, imgDesc

@@ -1,13 +1,13 @@
 import unittest
-import numpy as np
-from lfepy.Descriptor import LGDiP  # Replace with the actual module name
+import cupy as cp
+from lfepy.Descriptor import LGDiP
 
 
 class TestLGDiP(unittest.TestCase):
 
     def setUp(self):
-        # Create a sample image for testing (e.g., 8x8 grayscale image)
-        self.image = np.array([
+        # Create a sample image for testing (e.g., 8x8 grayscale image) using CuPy
+        self.image = cp.array([
             [52, 55, 61, 59, 79, 61, 76, 61],
             [62, 59, 55, 104, 94, 85, 59, 71],
             [63, 65, 66, 113, 144, 104, 63, 72],
@@ -16,12 +16,12 @@ class TestLGDiP(unittest.TestCase):
             [68, 79, 60, 70, 77, 66, 58, 75],
             [69, 85, 64, 58, 55, 61, 65, 83],
             [70, 87, 69, 68, 65, 73, 78, 90]
-        ], dtype=np.uint8)
+        ], dtype=cp.uint8)
 
     def test_lgdip_default_params(self):
         # Test LGDiP with default parameters
         lgdip_hist, imgDesc = LGDiP(self.image)
-        self.assertIsInstance(lgdip_hist, np.ndarray)
+        self.assertIsInstance(lgdip_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertTrue(len(imgDesc) > 0)
         self.assertTrue(lgdip_hist.ndim == 1)  # Should be a 1D array
@@ -29,7 +29,7 @@ class TestLGDiP(unittest.TestCase):
     def test_lgdip_custom_params(self):
         # Test LGDiP with custom parameters
         lgdip_hist, imgDesc = LGDiP(self.image, mode='h')
-        self.assertIsInstance(lgdip_hist, np.ndarray)
+        self.assertIsInstance(lgdip_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertTrue(len(imgDesc) > 0)
         self.assertTrue(lgdip_hist.ndim == 1)  # Should be a 1D array
@@ -45,7 +45,7 @@ class TestLGDiP(unittest.TestCase):
             LGDiP(None)
 
     def test_lgdip_with_non_array_image(self):
-        # Test LGDiP with a non-numpy array image
+        # Test LGDiP with a non-CuPy array image
         with self.assertRaises(TypeError):
             LGDiP("invalid_image")
 
@@ -57,8 +57,7 @@ class TestLGDiP(unittest.TestCase):
         for desc in imgDesc:
             self.assertIn('fea', desc)
             self.assertEqual(desc['fea'].ndim, 2)
-            self.assertEqual(desc['fea'].dtype, np.float64)
-
+            self.assertEqual(desc['fea'].dtype, cp.uint8)
 
 if __name__ == '__main__':
     unittest.main()

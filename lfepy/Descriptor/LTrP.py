@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
 
@@ -13,8 +15,8 @@ def LTrP(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            LTrP_hist (numpy.ndarray): Histogram(s) of LTrP descriptors.
-            imgDesc (numpy.ndarray): LTrP descriptors.
+            LTrP_hist (cupy.ndarray): Histogram(s) of LTrP descriptors.
+            imgDesc (cupy.ndarray): LTrP descriptors.
 
     Raises:
         TypeError: If `image` is not a valid `numpy.ndarray`.
@@ -54,23 +56,24 @@ def LTrP(image, **kwargs):
     # Initialize variables
     x_c = image[2:-2, 2:-2]
     rSize, cSize = x_c.shape
-    imgDesc = np.zeros_like(x_c)
+    imgDesc = cp.zeros_like(x_c)  # Use CuPy for GPU array
 
     # Compute LTrP descriptors
     for n, corners in enumerate(link_list):
         corner1, corner2 = corners
         x_p1 = image[corner1[0] - 1:corner1[0] + rSize - 1, corner1[1] - 1:corner1[1] + cSize - 1]
         x_p2 = image[corner2[0] - 1:corner2[0] + rSize - 1, corner2[1] - 1:corner2[1] + cSize - 1]
-        imgDesc += np.logical_xor((x_p1 - x_c) >= 0, (x_p2 - x_c) >= 0) * 2**(len(link_list) - n - 1)
+        imgDesc += cp.logical_xor((x_p1 - x_c) >= 0, (x_p2 - x_c) >= 0) * 2 ** (len(link_list) - n - 1)
 
     # Set bin vectors
-    options['binVec'] = np.arange(256)
+    options['binVec'] = cp.arange(256)  # CuPy array for bin vectors
 
     # Compute LTrP histogram
-    LTrP_hist = np.zeros(len(options['binVec']))
+    LTrP_hist = cp.zeros(len(options['binVec']))  # CuPy array for histogram
     for i, bin_val in enumerate(options['binVec']):
-        LTrP_hist[i] = np.sum([imgDesc == bin_val])
+        LTrP_hist[i] = cp.sum(imgDesc == bin_val)  # CuPy sum operation
+
     if 'mode' in options and options['mode'] == 'nh':
-        LTrP_hist = LTrP_hist / np.sum(LTrP_hist)
+        LTrP_hist = LTrP_hist / cp.sum(LTrP_hist)  # Normalize histogram using CuPy sum
 
     return LTrP_hist, imgDesc

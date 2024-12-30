@@ -1,9 +1,9 @@
-import numpy as np
+import cupy as cp
 
 
 def validate_scaleNum(options):
     if 'scaleNum' in options:
-        if isinstance(options['scaleNum'], (int, float, complex, np.number)):
+        if isinstance(options['scaleNum'], (int, float, complex, cp.number)):
             # Extract scaleNum value for texture difference or use default
             scaleNum = options.get('scaleNum', 5)
     elif 'scaleNum' not in options:

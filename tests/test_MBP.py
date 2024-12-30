@@ -1,13 +1,13 @@
 import unittest
-import numpy as np
-from lfepy.Descriptor import MBP  # Replace with the actual module name
+import cupy as cp
+from lfepy.Descriptor import MBP
 
 
 class TestMBP(unittest.TestCase):
 
     def setUp(self):
-        # Create a sample image for testing (e.g., 8x8 grayscale image)
-        self.image = np.array([
+        # Create a sample image for testing using CuPy (GPU arrays)
+        self.image = cp.array([
             [52, 55, 61, 59, 79, 61, 76, 61],
             [62, 59, 55, 104, 94, 85, 59, 71],
             [63, 65, 66, 113, 144, 104, 63, 72],
@@ -16,22 +16,22 @@ class TestMBP(unittest.TestCase):
             [68, 79, 60, 70, 77, 66, 58, 75],
             [69, 85, 64, 58, 55, 61, 65, 83],
             [70, 87, 69, 68, 65, 73, 78, 90]
-        ], dtype=np.uint8)
+        ], dtype=cp.uint8)
 
     def test_mbp_default_params(self):
-        # Test MBP with default parameters
+        # Test MBP with default parameters (on GPU)
         mbp_hist, imgDesc = MBP(self.image)
-        self.assertIsInstance(mbp_hist, np.ndarray)
-        self.assertIsInstance(imgDesc, np.ndarray)
-        self.assertTrue(len(mbp_hist) > 0)  # Check that histogram is not empty
+        self.assertIsInstance(mbp_hist, cp.ndarray)  # CuPy array
+        self.assertIsInstance(imgDesc, cp.ndarray)  # CuPy array
+        self.assertTrue(len(mbp_hist) > 0)
         self.assertEqual(imgDesc.shape, (self.image.shape[0] - 2, self.image.shape[1] - 2))
 
     def test_mbp_custom_mode(self):
-        # Test MBP with a custom mode
+        # Test MBP with custom mode (on GPU)
         mbp_hist, imgDesc = MBP(self.image, mode='h')
-        self.assertIsInstance(mbp_hist, np.ndarray)
-        self.assertIsInstance(imgDesc, np.ndarray)
-        self.assertTrue(len(mbp_hist) > 0)  # Check that histogram is not empty
+        self.assertIsInstance(mbp_hist, cp.ndarray)  # CuPy array
+        self.assertIsInstance(imgDesc, cp.ndarray)  # CuPy array
+        self.assertTrue(len(mbp_hist) > 0)
         self.assertEqual(imgDesc.shape, (self.image.shape[0] - 2, self.image.shape[1] - 2))
 
     def test_mbp_invalid_mode(self):
@@ -45,7 +45,7 @@ class TestMBP(unittest.TestCase):
             MBP(None)
 
     def test_mbp_with_non_array_image(self):
-        # Test MBP with a non-numpy array image
+        # Test MBP with a non-CuPy array image
         with self.assertRaises(TypeError):
             MBP("invalid_image")
 
@@ -54,8 +54,7 @@ class TestMBP(unittest.TestCase):
         mbp_hist, imgDesc = MBP(self.image)
         self.assertTrue(len(mbp_hist) > 0)
         self.assertEqual(imgDesc.shape, (self.image.shape[0] - 2, self.image.shape[1] - 2))
-        self.assertTrue(np.issubdtype(imgDesc.dtype, np.integer))  # Ensure imgDesc contains integer data
-
+        self.assertTrue(cp.issubdtype(imgDesc.dtype, cp.integer))  # Ensure imgDesc contains integer data
 
 if __name__ == '__main__':
     unittest.main()

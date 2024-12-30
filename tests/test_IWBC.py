@@ -1,13 +1,13 @@
 import unittest
-import numpy as np
-from lfepy.Descriptor import IWBC  # Replace with the actual module name
+import cupy as cp
+from lfepy.Descriptor import IWBC
 
 
 class TestIWBC(unittest.TestCase):
 
     def setUp(self):
         # Create a sample image for testing (e.g., 8x8 grayscale image)
-        self.image = np.array([
+        self.image = cp.array([
             [52, 55, 61, 59, 79, 61, 76, 61],
             [62, 59, 55, 104, 94, 85, 59, 71],
             [63, 65, 66, 113, 144, 104, 63, 72],
@@ -16,12 +16,12 @@ class TestIWBC(unittest.TestCase):
             [68, 79, 60, 70, 77, 66, 58, 75],
             [69, 85, 64, 58, 55, 61, 65, 83],
             [70, 87, 69, 68, 65, 73, 78, 90]
-        ], dtype=np.uint8)
+        ], dtype=cp.uint8)
 
     def test_iwbc_default_mode(self):
         # Test IWBC with default parameters
         iwbc_hist, imgDesc = IWBC(self.image)
-        self.assertIsInstance(iwbc_hist, np.ndarray)
+        self.assertIsInstance(iwbc_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertGreater(len(imgDesc), 0)  # Check if imgDesc is not empty
         self.assertEqual(iwbc_hist.ndim, 1)  # Should be a 1D array
@@ -29,7 +29,7 @@ class TestIWBC(unittest.TestCase):
     def test_iwbc_histogram_mode(self):
         # Test IWBC with histogram mode ('h')
         iwbc_hist, imgDesc = IWBC(self.image, mode='h')
-        self.assertIsInstance(iwbc_hist, np.ndarray)
+        self.assertIsInstance(iwbc_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertGreater(len(imgDesc), 0)  # Check if imgDesc is not empty
         self.assertEqual(iwbc_hist.ndim, 1)  # Should be a 1D array
@@ -37,12 +37,12 @@ class TestIWBC(unittest.TestCase):
     def test_iwbc_normalization_mode(self):
         # Test if the IWBC histogram is normalized in 'nh' mode
         iwbc_hist, _ = IWBC(self.image, mode='nh')
-        self.assertAlmostEqual(np.sum(iwbc_hist), 1.0)
+        self.assertAlmostEqual(cp.sum(iwbc_hist).get(), 1.0)  # Use `.get()` to move from GPU to CPU
 
     def test_iwbc_scale(self):
         # Test IWBC with a custom scale value
         iwbc_hist, imgDesc = IWBC(self.image, scale=2)
-        self.assertIsInstance(iwbc_hist, np.ndarray)
+        self.assertIsInstance(iwbc_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertGreater(len(imgDesc), 0)  # Check if imgDesc is not empty
 
@@ -62,7 +62,7 @@ class TestIWBC(unittest.TestCase):
             IWBC(None)
 
     def test_iwbc_with_non_array_image(self):
-        # Test IWBC with a non-numpy array image
+        # Test IWBC with a non-CuPy array image
         with self.assertRaises(TypeError):
             IWBC("invalid_image")
 

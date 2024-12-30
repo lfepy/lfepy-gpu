@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 from lfepy.Helper import get_mapping
 
 
@@ -12,24 +12,24 @@ def validate_mappingType(options, radius, neighbors):
         mapping = get_mapping(neighbors, mappingType)
         if mappingType == 'u2':
             if radius == 1:
-                options['binVec'] = np.arange(0, 59)
+                options['binVec'] = cp.arange(0, 59)
             elif radius == 2:
-                options['binVec'] = np.arange(0, 243)
+                options['binVec'] = cp.arange(0, 243)
         elif mappingType == 'ri':
             if radius == 1:
-                options['binVec'] = np.arange(0, 36)
+                options['binVec'] = cp.arange(0, 36)
             elif radius == 2:
-                options['binVec'] = np.arange(0, 4117)
+                options['binVec'] = cp.arange(0, 4117)
         elif mappingType == 'riu2':
             if radius == 1:
-                options['binVec'] = np.arange(0, 10)
+                options['binVec'] = cp.arange(0, 10)
             elif radius == 2:
-                options['binVec'] = np.arange(0, 16)
+                options['binVec'] = cp.arange(0, 16)
         else:
             raise ValueError(
-                f"Invalid mapping type '{options['mappingType']}'. Valid mapping type are {valid_mapping}.")
+                f"Invalid mapping type '{options['mappingType']}'. Valid mapping types are {valid_mapping}.")
     else:
         mapping = 0
-        options['binVec'] = np.arange(0, 256)
+        options['binVec'] = cp.arange(0, 256)
 
     return options, mapping

@@ -1,5 +1,7 @@
-import numpy as np
-from scipy.signal import convolve2d
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
+from cupyx.scipy.signal import convolve2d
 from lfepy.Helper import get_mapping
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_mask_GDP
 
@@ -17,8 +19,8 @@ def GDP(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            GDP_hist (numpy.ndarray): Histogram(s) of GDP descriptors.
-            imgDesc (numpy.ndarray): GDP descriptors.
+            GDP_hist (cupy.ndarray): Histogram(s) of GDP descriptors.
+            imgDesc (cupy.ndarray): GDP descriptors.
 
     Raises:
         TypeError: If the `image` is not a valid `numpy.ndarray`.
@@ -52,30 +54,31 @@ def GDP(image, **kwargs):
     options = validate_mode(options)
     options, t = validate_mask_GDP(options)
 
-    EPSILON = 0.0000001
+    EPSILON = 1e-7
 
-    # Define masks for sobel or prewitt
+    # Define masks for Sobel or Prewitt
     if options['mask'] == 'sobel':
-        maskA = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
-        maskB = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
-        link = np.array([[1, 2], [1, 1], [2, 1], [3, 1], [3, 2], [3, 3], [2, 3], [1, 3]])
+        maskA = cp.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
+        maskB = cp.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+        link = cp.array([[1, 2], [1, 1], [2, 1], [3, 1], [3, 2], [3, 3], [2, 3], [1, 3]])
     elif options['mask'] == 'prewitt':
-        maskA = np.array([[1, 1, 1], [0, 0, 0], [-1, -1, -1]])
-        maskB = np.array([[1, 0, -1], [1, 0, -1], [1, 0, -1]])
-        link = np.array([[3, 1], [3, 2], [3, 3], [2, 3], [1, 3], [1, 2], [1, 1], [2, 1]])
+        maskA = cp.array([[1, 1, 1], [0, 0, 0], [-1, -1, -1]])
+        maskB = cp.array([[1, 0, -1], [1, 0, -1], [1, 0, -1]])
+        link = cp.array([[3, 1], [3, 2], [3, 3], [2, 3], [1, 3], [1, 2], [1, 1], [2, 1]])
 
-    Gx = convolve2d(image, maskA, 'same')
-    Gy = convolve2d(image, maskB, 'same')
-    angles = np.arctan2(Gy, Gx + EPSILON)
-    angles = np.degrees(angles) + 90
+    Gx = convolve2d(image, maskA, mode='same')
+    Gy = convolve2d(image, maskB, mode='same')
+    angles = cp.arctan2(Gy, Gx + EPSILON)
+    angles = cp.degrees(angles) + 90
 
     x_c = angles[1:-1, 1:-1]
     rSize, cSize = x_c.shape
-    GDPdecimal = np.zeros((rSize, cSize))
+    GDPdecimal = cp.zeros((rSize, cSize))
+
     for n in range(link.shape[0]):
         corner = link[n]
         x_i = angles[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1]
-        GDPdecimal += np.double(((x_i - x_c) <= t) & ((x_i - x_c) >= -t)) * 2 ** (8 - n - 1)
+        GDPdecimal += ((x_i - x_c <= t) & (x_i - x_c >= -t)) * 2 ** (8 - n - 1)
 
     if options['mask'] == 'prewitt':
         mapping = get_mapping(8, 'u2')
@@ -89,13 +92,14 @@ def GDP(image, **kwargs):
     imgDesc = GDPdecimal
 
     # Set bin vectors
-    options['binVec'] = np.arange(binNum)
+    options['binVec'] = cp.arange(binNum)
 
     # Compute GDP histogram
-    GDP_hist = np.zeros(len(options['binVec']))
+    GDP_hist = cp.zeros(len(options['binVec']))
     for i, bin_val in enumerate(options['binVec']):
-        GDP_hist[i] = np.sum([imgDesc == bin_val])
+        GDP_hist[i] = cp.sum(imgDesc == bin_val)
+
     if 'mode' in options and options['mode'] == 'nh':
-        GDP_hist = GDP_hist / np.sum(GDP_hist)
+        GDP_hist = GDP_hist / cp.sum(GDP_hist)
 
     return GDP_hist, imgDesc

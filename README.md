@@ -1,4 +1,4 @@
-# lfepy
+# lfepy-gpu
 
 **Local Feature Extractors for Python** is a Python package for local descriptors. It provides feature extraction from grayscale images, facilitating AI tasks like object detection, facial recognition, and classification.
 
@@ -14,7 +14,7 @@
 
 ## Overview
 
-**lfepy** is a Python package for local feature extraction. It contains 27 different descriptors that can be used for various tasks in computer vision and image processing.
+**lfepy-gpu** is a GPU-based Python package for local feature extraction. It contains 27 different descriptors that can be used for various tasks in computer vision and image processing.
 
 ## Features
 
@@ -25,6 +25,7 @@
 ## Requirements
 
 - **python>=3.0**
+- **cupy-cuda11x>=13.3.0**
 - **numpy>=1.26.4**
 - **scipy>=1.13.0**
 - **scikit-image>=0.23.2**
@@ -34,7 +35,7 @@
 To install lfepy, use the following command:
 
 ```bash
-pip install lfepy
+pip install lfepy-gpu
 ```
 ## Usage
 Basic Example

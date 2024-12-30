@@ -1,9 +1,9 @@
-import numpy as np
+import cupy as cp
 
 
 def validate_L(options):
     if 'L' in options:
-        if isinstance(options['L'], (int, float, complex, np.number)):
+        if isinstance(options['L'], (int, float, complex, cp.number)):
             # Extract L value for texture difference or use default
             L = options.get('L', 2)
     elif 'L' not in options:

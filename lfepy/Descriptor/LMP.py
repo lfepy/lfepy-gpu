@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
 
@@ -13,8 +15,8 @@ def LMP(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            LMP_hist (numpy.ndarray): Histogram(s) of LMP descriptors.
-            imgDesc (numpy.ndarray): LMP descriptors.
+            LMP_hist (cupy.ndarray): Histogram(s) of LMP descriptors.
+            imgDesc (cupy.ndarray): LMP descriptors.
 
     Raises:
         TypeError: If the `image` is not a valid `numpy.ndarray`.
@@ -37,7 +39,6 @@ def LMP(image, **kwargs):
         Computer and Information Technology (ICCIT), 2011 14th International Conference on, IEEE,
         2011, pp. 572-576.
     """
-    # Input data validation
     image = validate_image(image)
     options = validate_kwargs(**kwargs)
     options = validate_mode(options)
@@ -57,22 +58,22 @@ def LMP(image, **kwargs):
     rSize, cSize = x_c.shape
 
     # Initialize LMP descriptor matrix
-    imgDesc = np.zeros((rSize, cSize))
+    imgDesc = cp.zeros((rSize, cSize), dtype=cp.float64)
 
     for n in range(8):
         corner = link[n]
         x_i1 = image[corner[0][0] - 1:corner[0][0] + rSize - 1, corner[0][1] - 1:corner[0][1] + cSize - 1]
         x_i2 = image[corner[1][0] - 1:corner[1][0] + rSize - 1, corner[1][1] - 1:corner[1][1] + cSize - 1]
-        imgDesc += np.double((((x_i1 - x_c) >= 0) & ((x_i2 - x_i1) >= 0)) * 2 ** (8 - n - 1))
+        imgDesc += ((((x_i1 - x_c) >= 0) & ((x_i2 - x_i1) >= 0)) * 2 ** (8 - n - 1))
 
     # Set bin vectors
-    options['binVec'] = np.arange(256)
+    options['binVec'] = cp.arange(256)  # CuPy array
 
     # Compute LMP histogram
-    LMP_hist = np.zeros(len(options['binVec']))
+    LMP_hist = cp.zeros(len(options['binVec']), dtype=cp.float64)  # CuPy array
     for i, bin_val in enumerate(options['binVec']):
-        LMP_hist[i] = np.sum([imgDesc == bin_val])
+        LMP_hist[i] = cp.sum(imgDesc == bin_val)  # CuPy sum operation
     if 'mode' in options and options['mode'] == 'nh':
-        LMP_hist = LMP_hist / np.sum(LMP_hist)
+        LMP_hist = LMP_hist / cp.sum(LMP_hist)  # Normalize histogram
 
     return LMP_hist, imgDesc

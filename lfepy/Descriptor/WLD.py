@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_T, validate_N, validate_scaleTop
 
 
@@ -16,7 +18,7 @@ def WLD(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            WLD_hist (numpy.ndarray): Histogram of WLD descriptors.
+            WLD_hist (cupy.ndarray): Histogram of WLD descriptors.
             imgDesc (list of dicts): List of dictionaries containing WLD descriptors for each scale.
 
     Raises:
@@ -56,15 +58,15 @@ def WLD(image, **kwargs):
     N = validate_N(options)
     scaleTop = validate_scaleTop(options)
 
-    scaleCell = {(1, 1): np.array([[1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1], [2, 1]]),
-                 (1, 2): np.array([[3, 2], [1, 2], [2, 1], [2, 3]]),
-                 (2, 1): np.array([[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [2, 5], [3, 5], [4, 5],
+    scaleCell = {(1, 1): cp.array([[1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1], [2, 1]]),
+                 (1, 2): cp.array([[3, 2], [1, 2], [2, 1], [2, 3]]),
+                 (2, 1): cp.array([[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [2, 5], [3, 5], [4, 5],
                                    [5, 5], [5, 4], [5, 3], [5, 2], [5, 1], [4, 1], [3, 1], [2, 1]]),
-                 (2, 2): np.array([[5, 3], [1, 3], [3, 1], [3, 5]]),
-                 (3, 1): np.array([[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6], [1, 7], [2, 7],
+                 (2, 2): cp.array([[5, 3], [1, 3], [3, 1], [3, 5]]),
+                 (3, 1): cp.array([[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6], [1, 7], [2, 7],
                                    [3, 7], [4, 7], [5, 7], [6, 7], [7, 7], [7, 6], [7, 5], [7, 4],
                                    [7, 3], [7, 2], [7, 1], [6, 1], [5, 1], [4, 1], [3, 1], [2, 1]]),
-                 (3, 2): np.array([[7, 4], [1, 4], [4, 1], [4, 7]])}
+                 (3, 2): cp.array([[7, 4], [1, 4], [4, 1], [4, 7]])}
 
     BELTA = 5
     ALPHA = 3
@@ -78,14 +80,14 @@ def WLD(image, **kwargs):
         x_c = image[scale:-scale, scale:-scale]
         rSize, cSize = x_c.shape
         link1 = scaleCell[(scale, 1)]
-        V00 = np.zeros_like(x_c)
+        V00 = cp.zeros_like(x_c)
 
         for corner in link1:
             x_i = image[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1]
             V00 += x_i
 
         V00 -= numNeigh * x_c
-        imgDE = np.degrees(np.arctan(ALPHA * V00 / (x_c + BELTA))) + 90
+        imgDE = cp.degrees(cp.arctan(ALPHA * V00 / (x_c + BELTA))) + 90
 
         link2 = scaleCell[(scale, 2)]
         V04 = (image[link2[2, 0] - 1:link2[2, 0] + rSize - 1, link2[2, 1] - 1:link2[2, 1] + cSize - 1] -
@@ -94,7 +96,7 @@ def WLD(image, **kwargs):
                image[link2[1, 0] - 1:link2[1, 0] + rSize - 1, link2[1, 1] - 1:link2[1, 1] + cSize - 1])
 
         V03[V03 == 0] = EPSILON
-        imgGO = np.degrees(np.arctan(V04 / V03))
+        imgGO = cp.degrees(cp.arctan(V04 / V03))
         imgGO[V03 < 0] += 180
         imgGO[(V03 >= 0) & (V04 < 0)] += 360
 
@@ -111,20 +113,20 @@ def WLD(image, **kwargs):
         imgDE = desc[1]['fea']['DE']
 
         range_GO = 360 / T
-        imgGO = np.floor(imgGO / range_GO)
+        imgGO = cp.floor(imgGO / range_GO)
 
         range_DE = 180 / N
-        imgDE = np.floor(imgDE / range_DE)
+        imgDE = cp.floor(imgDE / range_DE)
 
         hh = []
         for t in range(T):
             orien = imgDE[imgGO == t]
-            orienHist, _ = np.histogram(orien, bins=range(N + 1))
+            orienHist, _ = cp.histogram(orien, bins=range(N + 1))
             hh.extend(orienHist)
         WLD_hist.extend(hh)
 
-    WLD_hist = np.array(WLD_hist)
+    WLD_hist = cp.array(WLD_hist)
     if 'mode' in options and options['mode'] == 'nh':
-        WLD_hist = WLD_hist / np.sum(WLD_hist)
+        WLD_hist = WLD_hist / cp.sum(WLD_hist)
 
     return WLD_hist, imgDesc

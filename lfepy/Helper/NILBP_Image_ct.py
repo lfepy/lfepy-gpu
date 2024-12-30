@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 from lfepy.Helper.cirInterpSingleRadius_ct import cirInterpSingleRadius_ct
 
 
@@ -33,40 +33,39 @@ def NILBP_Image_ct(img, lbpPoints, mapping, mode, lbpRadius):
     blocks = blocks.T  # Transpose to match the expected shape
 
     # Centering the blocks by subtracting the mean
-    blocks = blocks - np.mean(blocks, axis=1, keepdims=True)
+    blocks = blocks - cp.mean(blocks, axis=1, keepdims=True)
 
     # Binarize the blocks
     blocks[blocks >= 0] = 1
     blocks[blocks < 0] = 0
 
     # Calculate the LBP value for each block
-    weight = 2 ** np.arange(lbpPoints)
+    weight = 2 ** cp.arange(lbpPoints)  # Use CuPy for weights
     blocks = blocks * weight
-    blocks = np.sum(blocks, axis=1)
+    blocks = cp.sum(blocks, axis=1)
 
     # Reshape the result to match the image dimensions
     result = blocks
-    result = np.reshape(result, (dx + 1, dy + 1))
+    result = cp.reshape(result, (dx + 1, dy + 1))
 
     # Apply mapping if provided
     if isinstance(mapping, dict):
         bins = mapping['num']
-        for i in range(result.shape[0]):
-            for j in range(result.shape[1]):
-                result[i, j] = mapping['table'][int(result[i, j])]
+        table = cp.array(mapping['table'], dtype=cp.int32)
+        result = table[result.astype(cp.uint32)]
 
     # Compute the histogram or convert result to appropriate type
     if mode in ['h', 'hist', 'nh']:
-        result = np.histogram(result, bins=np.arange(bins + 1))[0]
+        result = cp.histogram(result, bins=cp.arange(bins + 1))[0]
         if mode == 'nh':
-            result = result / np.sum(result)
+            result = result / cp.sum(result)
     else:
         # Determine the appropriate data type for the result
-        if (bins - 1) <= np.iinfo(np.uint8).max:
-            result = result.astype(np.uint8)
-        elif (bins - 1) <= np.iinfo(np.uint16).max:
-            result = result.astype(np.uint16)
+        if (bins - 1) <= cp.iinfo(cp.uint8).max:
+            result = result.astype(cp.uint8)
+        elif (bins - 1) <= cp.iinfo(cp.uint16).max:
+            result = result.astype(cp.uint16)
         else:
-            result = result.astype(np.uint32)
+            result = result.astype(cp.uint32)
 
     return result

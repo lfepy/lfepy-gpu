@@ -1,4 +1,6 @@
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
 from lfepy.Helper import (NewRDLBP_Image, view_as_windows, get_mapping_info_ct, NILBP_Image_ct, RDLBP_Image_SmallestRadiusOnly)
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
@@ -14,7 +16,7 @@ def MRELBP(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            MRELBP_hist (numpy.ndarray): Histogram(s) of MRELBP descriptors.
+            MRELBP_hist (cupy.ndarray): Histogram(s) of MRELBP descriptors.
             imgDesc (list of dicts): List of dictionaries where each dictionary contains the LBP descriptors for different radii. Each dictionary has:
                 'fea': Features extracted for the specific radius, including:
                     'CImg': Processed image data after median filtering and LBP transformation.
@@ -66,10 +68,11 @@ def MRELBP(image, **kwargs):
         lbpMethod = 'MELBPEightSch1'
         mapping = get_mapping_info_ct(lbpRadius, lbpPoints, lbpMethod)
         numLBPbins = mapping['num']
+
         # Extend the image with symmetric padding
-        imgExt = np.pad(image, pad_width=1, mode='symmetric')
+        imgExt = cp.pad(image, pad_width=1, mode='symmetric')
         imgblks = view_as_windows(imgExt, (3, 3)).reshape(-1, 9)
-        a = np.median(imgblks, axis=1)
+        a = cp.median(imgblks, axis=1)
         b = a.reshape(image.shape)
         CImg = b[lbpRadius:-lbpRadius, lbpRadius:-lbpRadius].flatten()
         CImg -= CImg.mean()
@@ -80,14 +83,14 @@ def MRELBP(image, **kwargs):
             # Special processing for radius 2
             filWin = 3
             halfWin = (filWin - 1) // 2
-            imgExt = np.pad(image, pad_width=halfWin, mode='symmetric')
+            imgExt = cp.pad(image, pad_width=halfWin, mode='symmetric')
             imgblks = view_as_windows(imgExt, (filWin, filWin)).reshape(-1, filWin ** 2)
-            imgMedian = np.median(imgblks, axis=1).reshape(image.shape)
+            imgMedian = cp.median(imgblks, axis=1).reshape(image.shape)
             NILBPImage = NILBP_Image_ct(imgMedian, lbpPoints, mapping, 'image', lbpRadius)
-            histNI = np.histogram(NILBPImage, bins=np.arange(numLBPbins + 1))[0]
-            imgCurr = np.reshape(imgMedian, image.shape)
+            histNI = cp.histogram(NILBPImage, bins=cp.arange(numLBPbins + 1))[0]
+            imgCurr = cp.reshape(imgMedian, image.shape)
             RDLBPImage = RDLBP_Image_SmallestRadiusOnly(b, imgCurr, lbpRadius, lbpPoints, mapping, 'image')
-            histRD = np.histogram(RDLBPImage, bins=np.arange(numLBPbins + 1))[0]
+            histRD = cp.histogram(RDLBPImage, bins=cp.arange(numLBPbins + 1))[0]
         else:
             # General processing for other radii
             if lbpRadius % 2 == 0:
@@ -95,25 +98,25 @@ def MRELBP(image, **kwargs):
             else:
                 filWin = lbpRadius
             halfWin = (filWin - 1) // 2
-            imgExt = np.pad(image, pad_width=halfWin, mode='symmetric')
+            imgExt = cp.pad(image, pad_width=halfWin, mode='symmetric')
             imgblks = view_as_windows(imgExt, (filWin, filWin)).reshape(-1, filWin ** 2)
-            imgMedian = np.median(imgblks, axis=1).reshape(image.shape)
-            imgCurr = np.reshape(imgMedian, image.shape)
+            imgMedian = cp.median(imgblks, axis=1).reshape(image.shape)
+            imgCurr = cp.reshape(imgMedian, image.shape)
             NILBPImage = NILBP_Image_ct(imgCurr, lbpPoints, mapping, 'image', lbpRadius)
-            histNI = np.histogram(NILBPImage, bins=np.arange(numLBPbins + 1))[0]
+            histNI = cp.histogram(NILBPImage, bins=cp.arange(numLBPbins + 1))[0]
 
             if lbpRadiusPre % 2 == 0:
                 filWin = lbpRadiusPre + 1
             else:
                 filWin = lbpRadiusPre
             halfWin = (filWin - 1) // 2
-            imgExt = np.pad(image, pad_width=halfWin, mode='symmetric')
+            imgExt = cp.pad(image, pad_width=halfWin, mode='symmetric')
             imgblks = view_as_windows(imgExt, (filWin, filWin)).reshape(-1, filWin ** 2)
-            imgMedian = np.median(imgblks, axis=1).reshape(image.shape)
+            imgMedian = cp.median(imgblks, axis=1).reshape(image.shape)
             imgPre = imgMedian
-            imgCurr = np.reshape(imgMedian, image.shape)
+            imgCurr = cp.reshape(imgMedian, image.shape)
             RDLBPImage = NewRDLBP_Image(imgCurr, imgPre, lbpRadius, lbpRadiusPre, lbpPoints, mapping, 'image')
-            histRD = np.histogram(RDLBPImage, bins=np.arange(numLBPbins + 1))[0]
+            histRD = cp.histogram(RDLBPImage, bins=cp.arange(numLBPbins + 1))[0]
 
         imgDesc.append({
             'fea': {
@@ -130,15 +133,19 @@ def MRELBP(image, **kwargs):
     # Compute MRELBP histogram
     MRELBP_hist = []
     for i in range(4):
-        Joint_CINIRD = np.zeros((options['numLBPbins'], options['numLBPbins'], 2))
-        CImg = imgDesc[i]['fea']['CImg'].flatten()
-        NILBPImage = imgDesc[i]['fea']['NILBPImage'].flatten()
-        RDLBPImage = imgDesc[i]['fea']['RDLBPImage'].flatten()
-        for ih in range(len(NILBPImage)):
-            Joint_CINIRD[NILBPImage[ih], RDLBPImage[ih], int(CImg[ih] - 1)] += 1
+        Joint_CINIRD = cp.zeros((options['numLBPbins'], options['numLBPbins'], 2), dtype=cp.float32)
+        # Flatten the arrays and move them to GPU
+        CImg = cp.array(imgDesc[i]['fea']['CImg'], dtype=cp.int32).flatten()
+        NILBPImage = cp.array(imgDesc[i]['fea']['NILBPImage'], dtype=cp.int32).flatten()
+        RDLBPImage = cp.array(imgDesc[i]['fea']['RDLBPImage'], dtype=cp.int32).flatten()
+        indices = cp.stack((NILBPImage, RDLBPImage, CImg - 1), axis=-1)
+        cp.add.at(Joint_CINIRD, (indices[:, 0], indices[:, 1], indices[:, 2]), 1)
+        # Flatten the result for concatenation
         Joint_CINIRD = Joint_CINIRD.flatten()
-        MRELBP_hist = np.hstack((MRELBP_hist, Joint_CINIRD))
+
+        # Append the histogram to the MRELBP_hist array
+        MRELBP_hist = cp.hstack((MRELBP_hist, Joint_CINIRD))
     if 'mode' in options and options['mode'] == 'nh':
-        MRELBP_hist = MRELBP_hist / np.sum(MRELBP_hist)
+        MRELBP_hist = MRELBP_hist / cp.sum(MRELBP_hist)
 
     return MRELBP_hist, imgDesc

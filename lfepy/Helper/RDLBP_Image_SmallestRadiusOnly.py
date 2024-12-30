@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 from lfepy.Helper.cirInterpSingleRadiusNew import cirInterpSingleRadiusNew
 
 
@@ -36,12 +36,13 @@ def RDLBP_Image_SmallestRadiusOnly(imgCenSmooth, img, lbpRadius, lbpPoints, mapp
     """
     # Extract circularly interpolated blocks from the original image
     blocks1, dx, dy = cirInterpSingleRadiusNew(img, lbpPoints, lbpRadius)
-    blocks1 = blocks1.T
+    blocks1 = blocks1.T  # Transpose to match the expected shape
 
     # Adjust the smoothed image size based on the radius
     imgTemp = imgCenSmooth[lbpRadius:-lbpRadius, lbpRadius:-lbpRadius]
+
     # Create a tiled version of the smoothed image to match the size of the LBP blocks
-    blocks2 = np.tile(imgTemp.ravel(), (lbpPoints, 1)).T
+    blocks2 = cp.tile(imgTemp.ravel(), (lbpPoints, 1)).T
 
     # Compute the radial difference between the blocks of the original image and the smoothed image
     radialDiff = blocks1 - blocks2
@@ -50,33 +51,32 @@ def RDLBP_Image_SmallestRadiusOnly(imgCenSmooth, img, lbpRadius, lbpPoints, mapp
 
     # Compute the LBP value by weighting the binary differences
     bins = 2 ** lbpPoints
-    weight = 2 ** np.arange(lbpPoints)
+    weight = 2 ** cp.arange(lbpPoints)  # Use CuPy for weights
     radialDiff = radialDiff * weight
-    radialDiff = np.sum(radialDiff, axis=1)
+    radialDiff = cp.sum(radialDiff, axis=1)
 
     # Reshape the result to match the dimensions of the original image
     result = radialDiff
-    result = np.reshape(result, (dx + 1, dy + 1))
+    result = cp.reshape(result, (dx + 1, dy + 1))
 
     # Apply mapping if it is defined
     if isinstance(mapping, dict):
         bins = mapping['num']
-        for i in range(result.shape[0]):
-            for j in range(result.shape[1]):
-                result[i, j] = mapping['table'][int(result[i, j])]
+        table = cp.array(mapping['table'], dtype=cp.int32)
+        result = table[result.astype(cp.uint32)]
 
     # Return result as histogram or image depending on mode
     if mode in ['h', 'hist', 'nh']:
-        hist_result = np.histogram(result, bins=np.arange(bins + 1))[0]
+        hist_result = cp.histogram(result, bins=cp.arange(bins + 1))[0]
         if mode == 'nh':
-            hist_result = hist_result / np.sum(hist_result)
+            hist_result = hist_result / cp.sum(hist_result)
         return hist_result
     else:
         # Return result as matrix of unsigned integers
         max_val = bins - 1
-        if max_val <= np.iinfo(np.uint8).max:
-            return result.astype(np.uint8)
-        elif max_val <= np.iinfo(np.uint16).max:
-            return result.astype(np.uint16)
+        if max_val <= cp.iinfo(cp.uint8).max:
+            return result.astype(cp.uint8)
+        elif max_val <= cp.iinfo(cp.uint16).max:
+            return result.astype(cp.uint16)
         else:
-            return result.astype(np.uint32)
+            return result.astype(cp.uint32)

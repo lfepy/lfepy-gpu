@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 from lfepy.Helper.construct_Gabor_filters import construct_Gabor_filters
 from lfepy.Helper.filter_image_with_Gabor_bank import filter_image_with_Gabor_bank
 
@@ -8,12 +8,12 @@ def gabor_filter(image, orienNum, scaleNum):
     Apply a Gabor filter bank to an image and organize the results into a multidimensional array.
 
     Args:
-        image (numpy.ndarray): Input image to be filtered. Should be a 2D numpy array.
+        image (cp.ndarray): Input image to be filtered. Should be a 2D CuPy array.
         orienNum (int): Number of orientation filters in the Gabor filter bank.
         scaleNum (int): Number of scale filters in the Gabor filter bank.
 
     Returns:
-        numpy.ndarray: Multidimensional array containing the Gabor magnitude responses. Shape is (height, width, orienNum, scaleNum).
+        cp.ndarray: Multidimensional array containing the Gabor magnitude responses. Shape is (height, width, orienNum, scaleNum).
 
     Example:
         >>> import numpy as np
@@ -27,7 +27,6 @@ def gabor_filter(image, orienNum, scaleNum):
 
     # Construct Gabor filter bank
     filter_bank = construct_Gabor_filters(orienNum, scaleNum, [r, c])
-
     # Apply Gabor filter bank to the image
     result = filter_image_with_Gabor_bank(image, filter_bank, 1)
 
@@ -35,7 +34,7 @@ def gabor_filter(image, orienNum, scaleNum):
     pixel_num = len(result) // (orienNum * scaleNum)
 
     # Initialize the output array
-    gaborMag = np.zeros((r, c, orienNum, scaleNum))
+    gaborMag = cp.zeros((r, c, orienNum, scaleNum))
 
     # Organize the results into the output array
     orien = 0

@@ -1,5 +1,7 @@
-import numpy as np
-from scipy.signal import convolve2d
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
+from cupyx.scipy.signal import convolve2d
 from lfepy.Descriptor.LTeP import LTeP
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_DGLP
 
@@ -18,7 +20,7 @@ def GLTP(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            GLTP_hist (numpy.ndarray): Histogram(s) of GLTP descriptors.
+            GLTP_hist (cupy.ndarray): Histogram(s) of GLTP descriptors.
             imgDesc (list): List of dictionaries containing GLTP descriptors.
 
     Raises:
@@ -56,42 +58,42 @@ def GLTP(image, **kwargs):
     EPSILON = 1e-7
 
     # Define Sobel masks for gradient computation
-    maskA = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
-    maskB = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+    maskA = cp.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
+    maskB = cp.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
 
-    # Compute gradients
+    # Compute gradients using 2D convolution
     Gx = convolve2d(image, maskA, mode='same')
     Gy = convolve2d(image, maskB, mode='same')
 
     # Compute gradient magnitude
-    img_gradient = np.abs(Gx) + np.abs(Gy)
+    img_gradient = cp.abs(Gx) + cp.abs(Gy)
 
     # Compute Local Ternary Pattern (LTeP) on gradient image
     _, imgDesc = LTeP(img_gradient, t=options.get('t', 10))
-    options['binVec'] = [np.arange(256) for _ in range(2)]
+    options['binVec'] = [cp.arange(256) for _ in range(2)]
 
     # If DGLP flag is set, include directional gradient pattern
     if options['DGLP'] == 1:
         r, c = Gx.shape
-        img_angle = np.arctan2(Gy, Gx + EPSILON)
-        img_angle = np.degrees(img_angle)
-        img_angle[Gx < 0] += 180
-        img_angle[(Gx >= 0) & (Gy < 0)] += 360
-        img_angle = img_angle[1:r-1, 1:c-1]
-        img_angle = np.floor(img_angle / 22.5).astype(int)
+        img_angle = cp.arctan2(Gy, Gx + EPSILON)
+        img_angle = cp.degrees(img_angle)
+        img_angle = cp.where(Gx < 0, img_angle + 180, img_angle)
+        img_angle = cp.where((Gx >= 0) & (Gy < 0), img_angle + 360, img_angle)
+        img_angle = img_angle[1:r - 1, 1:c - 1]
+        img_angle = cp.floor(img_angle / 22.5).astype(int)
 
         imgDesc.append({'fea': img_angle})
-        options['binVec'].append(np.arange(16))
+        options['binVec'].append(cp.arange(16))
 
     # Compute GLTP histogram
     GLTP_hist = []
     for s in range(len(imgDesc)):
         imgReg = imgDesc[s]['fea']
         for i, bin_val in enumerate(options['binVec'][s]):
-            hh = np.sum([imgReg == bin_val])
+            hh = cp.sum(imgReg == bin_val)
             GLTP_hist.append(hh)
-    GLTP_hist = np.array(GLTP_hist)
+    GLTP_hist = cp.array(GLTP_hist)
     if 'mode' in options and options['mode'] == 'nh':
-        GLTP_hist = GLTP_hist / np.sum(GLTP_hist)
+        GLTP_hist = GLTP_hist / cp.sum(GLTP_hist)
 
     return GLTP_hist, imgDesc

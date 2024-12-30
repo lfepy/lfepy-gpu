@@ -1,13 +1,13 @@
 import unittest
-import numpy as np
-from lfepy.Descriptor import LAP  # Replace with the actual module name
+import cupy as cp
+from lfepy.Descriptor import LAP
 
 
 class TestLAP(unittest.TestCase):
 
     def setUp(self):
         # Create a sample image for testing (e.g., 8x8 grayscale image)
-        self.image = np.array([
+        self.image = cp.array([
             [52, 55, 61, 59, 79, 61, 76, 61],
             [62, 59, 55, 104, 94, 85, 59, 71],
             [63, 65, 66, 113, 144, 104, 63, 72],
@@ -16,12 +16,12 @@ class TestLAP(unittest.TestCase):
             [68, 79, 60, 70, 77, 66, 58, 75],
             [69, 85, 64, 58, 55, 61, 65, 83],
             [70, 87, 69, 68, 65, 73, 78, 90]
-        ], dtype=np.uint8)
+        ], dtype=cp.uint8)
 
     def test_lap_default_mode(self):
         # Test LAP with default parameters
         lap_hist, imgDesc = LAP(self.image)
-        self.assertIsInstance(lap_hist, np.ndarray)
+        self.assertIsInstance(lap_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertGreater(len(imgDesc), 0)  # Check if imgDesc is not empty
         self.assertEqual(lap_hist.ndim, 1)  # Should be a 1D array
@@ -29,7 +29,7 @@ class TestLAP(unittest.TestCase):
     def test_lap_histogram_mode(self):
         # Test LAP with histogram mode ('h')
         lap_hist, imgDesc = LAP(self.image, mode='h')
-        self.assertIsInstance(lap_hist, np.ndarray)
+        self.assertIsInstance(lap_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertGreater(len(imgDesc), 0)  # Check if imgDesc is not empty
         self.assertEqual(lap_hist.ndim, 1)  # Should be a 1D array
@@ -37,7 +37,7 @@ class TestLAP(unittest.TestCase):
     def test_lap_normalization_mode(self):
         # Test if the LAP histogram is normalized in 'nh' mode
         lap_hist, _ = LAP(self.image, mode='nh')
-        self.assertAlmostEqual(np.sum(lap_hist), 1.0)
+        self.assertAlmostEqual(cp.sum(lap_hist).get(), 1.0)  # Use `.get()` to move from GPU to CPU
 
     def test_lap_invalid_mode(self):
         # Test LAP with an invalid mode
@@ -50,7 +50,7 @@ class TestLAP(unittest.TestCase):
             LAP(None)
 
     def test_lap_with_non_array_image(self):
-        # Test LAP with a non-numpy array image
+        # Test LAP with a non-CuPy array image
         with self.assertRaises(TypeError):
             LAP("invalid_image")
 

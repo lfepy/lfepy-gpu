@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 
 
 def roundn(x, n):
@@ -29,14 +29,14 @@ def roundn(x, n):
         # Calculate the power of 10 to shift the decimal point left
         p = 10 ** -n
         # Multiply x by p, round to the nearest integer, then divide by p to shift the decimal point back
-        x = np.round(p * x) / p
+        x = cp.round(p * x) / p
     elif n > 0:
         # Calculate the power of 10 to shift the decimal point right
         p = 10 ** n
         # Divide x by p, round to the nearest integer, then multiply by p to shift the decimal point back
-        x = p * np.round(x / p)
+        x = p * cp.round(x / p)
     else:
         # If n is zero, round x to the nearest integer
-        x = np.round(x)
+        x = cp.round(x)
 
     return x

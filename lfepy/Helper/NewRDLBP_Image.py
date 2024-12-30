@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 from lfepy.Helper.cirInterpSingleRadiusNew import cirInterpSingleRadiusNew
 
 
@@ -50,29 +50,31 @@ def NewRDLBP_Image(img, imgPre, lbpRadius, lbpRadiusPre, lbpPoints, mapping=None
 
     # Compute the LBP value by weighting the binary differences
     bins = 2 ** lbpPoints
-    weight = 2 ** np.arange(lbpPoints)
+    weight = 2 ** cp.arange(lbpPoints)  # Use CuPy array instead of NumPy for weights
     radialDiff = radialDiff * weight
-    radialDiff = np.sum(radialDiff, axis=1)
+    radialDiff = cp.sum(radialDiff, axis=1)
 
     # Apply mapping if it is defined
     if mapping is not None:
         bins = mapping['num']
-        result = np.array([mapping['table'][int(r)] for r in radialDiff], dtype=np.uint32)
+        table = cp.array(mapping['table'], dtype=cp.int32)
+        result = table[radialDiff.astype(cp.uint32)]
+
     else:
         result = radialDiff
 
     # Return result as histogram or image depending on mode
     if mode in ['h', 'hist', 'nh']:
-        hist_result = np.histogram(result, bins=np.arange(bins + 1))[0]
+        hist_result = cp.histogram(result, bins=cp.arange(bins + 1))[0]
         if mode == 'nh':
-            hist_result = hist_result / np.sum(hist_result)
+            hist_result = hist_result / cp.sum(hist_result)
         return hist_result
     else:
         # Return result as matrix of unsigned integers
         max_val = bins - 1
-        if max_val <= np.iinfo(np.uint8).max:
-            return result.astype(np.uint8)
-        elif max_val <= np.iinfo(np.uint16).max:
-            return result.astype(np.uint16)
+        if max_val <= cp.iinfo(cp.uint8).max:
+            return result.astype(cp.uint8)
+        elif max_val <= cp.iinfo(cp.uint16).max:
+            return result.astype(cp.uint16)
         else:
-            return result.astype(np.uint32)
+            return result.astype(cp.uint32)

@@ -1,5 +1,4 @@
-import numpy as np
-from scipy.fft import fft2, ifft2
+import cupy as cp
 from skimage.transform import resize
 from lfepy.Helper.construct_Gabor_filters import construct_Gabor_filters
 
@@ -38,8 +37,8 @@ def filter_image_with_Gabor_bank(image, filter_bank, down_sampling_factor=64):
         >>> print(features.shape)
     """
     # Check inputs
-    if not isinstance(image, np.ndarray):
-        raise ValueError("The first input parameter must be an image in the form of a numpy array.")
+    if not isinstance(image, cp.ndarray):
+        raise ValueError("The first input parameter must be an image in the form of a CuPy array.")
 
     if not isinstance(filter_bank, dict):
         raise ValueError("The second input parameter must be a dictionary containing the Gabor filter bank.")
@@ -77,29 +76,29 @@ def filter_image_with_Gabor_bank(image, filter_bank, down_sampling_factor=64):
         raise ValueError("The dimension of the input image and Gabor filters do not match!")
 
     # Compute output size
-    dim_spec_down_sampl = round(np.sqrt(down_sampling_factor))
-    new_size = (a // dim_spec_down_sampl, b // dim_spec_down_sampl)
+    dim_spec_down_sampl = cp.round(cp.sqrt(down_sampling_factor))
+    new_size = (a // dim_spec_down_sampl.get(), b // dim_spec_down_sampl.get())
 
     # Filter image in the frequency domain
-    image_tmp = np.zeros((2 * a, 2 * b))
+    image_tmp = cp.zeros((2 * a, 2 * b))
     image_tmp[:a, :b] = image
-    image = fft2(image_tmp)
+    image = cp.fft.fft2(image_tmp)
 
     for i in range(filter_bank['scales']):
         for j in range(filter_bank['orient']):
             # Filtering
-            Imgabout = ifft2(filter_bank['freq'][i][j] * image)
-            gabout = np.abs(Imgabout[a:2 * a, b:2 * b])
+            Imgabout = cp.fft.ifft2(filter_bank['freq'][i][j] * image)
+            gabout = cp.abs(Imgabout[a:2 * a, b:2 * b])
 
             # Down-sampling
-            y = resize(gabout, new_size, order=1)
+            y = cp.asarray(resize(gabout.get(), new_size, order=1))
 
             # Zero mean unit variance normalization
-            y = (y - np.mean(y)) / np.std(y)
+            y = (y - cp.mean(y)) / cp.std(y)
             y = y.ravel()
 
             # Add to image
             filtered_image.append(y)
 
-    filtered_image = np.concatenate(filtered_image)
+    filtered_image = cp.concatenate(filtered_image)
     return filtered_image

@@ -1,5 +1,5 @@
-import numpy as np
-from scipy.fft import fft2, ifft2, ifftshift
+import cupy as cp
+import cupy.fft as cp_fft
 from lfepy.Helper.low_pass_filter import low_pass_filter
 
 
@@ -41,131 +41,117 @@ def phase_cong3(image, nscale=4, norient=6, minWaveLength=3, mult=2.1, sigmaOnf=
         >>> image = data.camera()
         >>> M, m, ori, featType, PC, EO = phase_cong3(image)
     """
-    epsilon = .0001
+    epsilon = 1e-4
 
-    thetaSigma = np.pi / norient / dThetaOnSigma
+    thetaSigma = cp.pi / norient / dThetaOnSigma
 
     rows, cols = image.shape
-    imagefft = fft2(image)
+    imagefft = cp_fft.fft2(image)
 
-    zero = np.zeros((rows, cols))
+    zero = cp.zeros((rows, cols))
     EO = [[None] * norient for _ in range(nscale)]
-    covx2 = zero.copy()
-    covy2 = zero.copy()
-    covxy = zero.copy()
+    covx2, covy2, covxy = zero.copy(), zero.copy(), zero.copy()
 
-    estMeanE2n = []
-    PC = []
+    estMeanE2n, PC = [], []
     ifftFilterArray = [None] * nscale
 
-    if cols % 2:
-        xrange = np.linspace(-(cols - 1) / 2, (cols - 1) / 2, cols) / (cols - 1)
-    else:
-        xrange = np.linspace(-cols / 2, cols / 2 - 1, cols) / cols
+    # Precompute ranges and angles for the FFT grid
+    xrange = cp.linspace(-(cols - 1) / 2, (cols - 1) / 2, cols) / (cols - 1) if cols % 2 else cp.linspace(-cols / 2,
+                                                                                                          cols / 2 - 1,
+                                                                                                          cols) / cols
+    yrange = cp.linspace(-(rows - 1) / 2, (rows - 1) / 2, rows) / (rows - 1) if rows % 2 else cp.linspace(-rows / 2,
+                                                                                                          rows / 2 - 1,
+                                                                                                          rows) / rows
 
-    if rows % 2:
-        yrange = np.linspace(-(rows - 1) / 2, (rows - 1) / 2, rows) / (rows - 1)
-    else:
-        yrange = np.linspace(-rows / 2, rows / 2 - 1, rows) / rows
+    x, y = cp.meshgrid(xrange, yrange)
 
-    x, y = np.meshgrid(xrange, yrange)
+    radius = cp.sqrt(x ** 2 + y ** 2)
+    theta = cp.arctan2(-y, x)
 
-    radius = np.sqrt(x ** 2 + y ** 2)
-    theta = np.arctan2(-y, x)
-
-    radius = ifftshift(radius)
-    theta = ifftshift(theta)
+    radius = cp.fft.ifftshift(radius)
+    theta = cp.fft.ifftshift(theta)
     radius[0, 0] = 1
 
-    sintheta = np.sin(theta)
-    costheta = np.cos(theta)
-    del x, y, theta
+    sintheta, costheta = cp.sin(theta), cp.cos(theta)
 
-    lp = low_pass_filter([rows, cols], .45, 15)
+    lp = cp.array(low_pass_filter([rows, cols], .45, 15))
     logGabor = [None] * nscale
 
+    # Precompute log-Gabor filters
     for s in range(nscale):
         wavelength = minWaveLength * mult ** s
         fo = 1.0 / wavelength
-        logGabor[s] = np.exp((-(np.log(radius / fo)) ** 2) / (2 * np.log(sigmaOnf) ** 2))
+        logGabor[s] = cp.exp((-(cp.log(radius / fo)) ** 2) / (2 * cp.log(sigmaOnf) ** 2))
         logGabor[s] *= lp
         logGabor[s][0, 0] = 0
 
     spread = [None] * norient
 
+    # Precompute orientation filters
     for o in range(norient):
-        angl = o * np.pi / norient
-        ds = sintheta * np.cos(angl) - costheta * np.sin(angl)
-        dc = costheta * np.cos(angl) + sintheta * np.sin(angl)
-        dtheta = np.abs(np.arctan2(ds, dc))
-        spread[o] = np.exp((-dtheta ** 2) / (2 * thetaSigma ** 2))
+        angl = o * cp.pi / norient
+        ds = sintheta * cp.cos(angl) - costheta * cp.sin(angl)
+        dc = costheta * cp.cos(angl) + sintheta * cp.sin(angl)
+        dtheta = cp.abs(cp.arctan2(ds, dc))
+        spread[o] = cp.exp((-dtheta ** 2) / (2 * thetaSigma ** 2))
 
+    # Compute the phase congruency maps and features
     for o in range(norient):
-        angl = o * np.pi / norient
-        sumE_ThisOrient = zero.copy()
-        sumO_ThisOrient = zero.copy()
-        sumAn_ThisOrient = zero.copy()
-        Energy = zero.copy()
+        angl = o * cp.pi / norient
+        sumE_ThisOrient, sumO_ThisOrient, sumAn_ThisOrient, Energy = zero.copy(), zero.copy(), zero.copy(), zero.copy()
 
         for s in range(nscale):
             filter_ = logGabor[s] * spread[o]
-            ifftFilt = np.real(ifft2(filter_)) * np.sqrt(rows * cols)
+            ifftFilt = cp.real(cp.fft.ifft2(filter_)) * cp.sqrt(rows * cols)
             ifftFilterArray[s] = ifftFilt
-            EO[s][o] = ifft2(imagefft * filter_)
-            An = np.abs(EO[s][o])
+            EO[s][o] = cp.fft.ifft2(imagefft * filter_)
+            An = cp.abs(EO[s][o])
             sumAn_ThisOrient += An
-            sumE_ThisOrient += np.real(EO[s][o])
-            sumO_ThisOrient += np.imag(EO[s][o])
+            sumE_ThisOrient += cp.real(EO[s][o])
+            sumO_ThisOrient += cp.imag(EO[s][o])
 
             if s == 0:
-                EM_n = np.sum(filter_ ** 2)
+                EM_n = cp.sum(filter_ ** 2)
                 maxAn = An
             else:
-                maxAn = np.maximum(maxAn, An)
+                maxAn = cp.maximum(maxAn, An)
 
-        XEnergy = np.sqrt(sumE_ThisOrient ** 2 + sumO_ThisOrient ** 2) + epsilon
+        # Compute energy and thresholding
+        XEnergy = cp.sqrt(sumE_ThisOrient ** 2 + sumO_ThisOrient ** 2) + epsilon
         MeanE = sumE_ThisOrient / XEnergy
         MeanO = sumO_ThisOrient / XEnergy
 
         for s in range(nscale):
-            E = np.real(EO[s][o])
-            O = np.imag(EO[s][o])
-            Energy += E * MeanE + O * MeanO - np.abs(E * MeanO - O * MeanE)
+            E = cp.real(EO[s][o])
+            O = cp.imag(EO[s][o])
+            Energy += E * MeanE + O * MeanO - cp.abs(E * MeanO - O * MeanE)
 
-        medianE2n = np.median(np.abs(EO[0][o]) ** 2)
-        meanE2n = -medianE2n / np.log(0.5)
+        medianE2n = cp.median(cp.abs(EO[0][o]) ** 2)
+        meanE2n = -medianE2n / cp.log(0.5)
         estMeanE2n.append(meanE2n)
 
         noisePower = meanE2n / EM_n
-        EstSumAn2 = zero.copy()
-        for s in range(nscale):
-            EstSumAn2 += ifftFilterArray[s] ** 2
+        EstSumAn2 = sum(ifftFilterArray[s] ** 2 for s in range(nscale))
+        EstSumAiAj = sum(
+            ifftFilterArray[si] * ifftFilterArray[sj] for si in range(nscale - 1) for sj in range(si + 1, nscale))
 
-        EstSumAiAj = zero.copy()
-        for si in range(nscale - 1):
-            for sj in range(si + 1, nscale):
-                EstSumAiAj += ifftFilterArray[si] * ifftFilterArray[sj]
-
-        sumEstSumAn2 = np.sum(EstSumAn2)
-        sumEstSumAiAj = np.sum(EstSumAiAj)
-
-        EstNoiseEnergy2 = 2 * noisePower * sumEstSumAn2 + 4 * noisePower * sumEstSumAiAj
-        tau = np.sqrt(EstNoiseEnergy2 / 2)
-        EstNoiseEnergy = tau * np.sqrt(np.pi / 2)
-        EstNoiseEnergySigma = np.sqrt((2 - np.pi / 2) * tau ** 2)
+        EstNoiseEnergy2 = 2 * noisePower * cp.sum(EstSumAn2) + 4 * noisePower * cp.sum(EstSumAiAj)
+        tau = cp.sqrt(EstNoiseEnergy2 / 2)
+        EstNoiseEnergy = tau * cp.sqrt(cp.pi / 2)
+        EstNoiseEnergySigma = cp.sqrt((2 - cp.pi / 2) * tau ** 2)
         T = EstNoiseEnergy + k * EstNoiseEnergySigma
         T /= 1.7
 
-        Energy = np.maximum(Energy - T, zero)
+        Energy = cp.maximum(Energy - T, zero)
 
         width = sumAn_ThisOrient / (maxAn + epsilon) / nscale
-        weight = 1.0 / (1 + np.exp((cutOff - width) * g))
+        weight = 1.0 / (1 + cp.exp((cutOff - width) * g))
 
         PC.append(weight * Energy / sumAn_ThisOrient)
         featType = E + 1j * O
 
-        covx = PC[o] * np.cos(angl)
-        covy = PC[o] * np.sin(angl)
+        covx = PC[o] * cp.cos(angl)
+        covy = PC[o] * cp.sin(angl)
         covx2 += covx ** 2
         covy2 += covy ** 2
         covxy += covx * covy
@@ -174,11 +160,11 @@ def phase_cong3(image, nscale=4, norient=6, minWaveLength=3, mult=2.1, sigmaOnf=
     covy2 /= (norient / 2)
     covxy *= 4 / norient
 
-    denom = np.sqrt(covxy ** 2 + (covx2 - covy2) ** 2) + epsilon
+    denom = cp.sqrt(covxy ** 2 + (covx2 - covy2) ** 2) + epsilon
     sin2theta = covxy / denom
     cos2theta = (covx2 - covy2) / denom
-    ori = np.arctan2(sin2theta, cos2theta) / 2
-    ori = np.rad2deg(ori)
+    ori = cp.arctan2(sin2theta, cos2theta) / 2
+    ori = cp.rad2deg(ori)
     ori[ori < 0] += 180
 
     M = (covy2 + covx2 + denom) / 2

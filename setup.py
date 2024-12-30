@@ -1,9 +1,9 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='lfepy',
-    version='1.0.9',
-    author='Dr. Prof. Khalid M. Hosny, BSc. Mahmoud A. Mohamed, Dr. Essa E. Almazroei',
+    name='lfepy-gpu',
+    version='1.0.0',
+    author='Dr. Prof. Khalid M. Hosny, MSc. Mahmoud A. Mohamed, Dr. Essa E. Almazroei',
     author_email='lfepy@gmail.com',
     description='lfepy is a Python package for local feature extraction.',
     long_description=open('README.md').read(),
@@ -13,6 +13,7 @@ setup(
     include_package_data=True,
     install_requires=[
         # List your library's dependencies here
+        'cupy-cuda11x>=13.3.0',
         'numpy>=1.26.4',
         'scipy>=1.13.0',
         'scikit-image>=0.23.2',

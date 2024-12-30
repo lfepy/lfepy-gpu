@@ -1,5 +1,7 @@
-import numpy as np
-from scipy.signal import convolve2d
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.rawkernel is experimental.*")
+import cupy as cp
+from cupyx.scipy.signal import convolve2d
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
 
@@ -14,8 +16,8 @@ def LDiPv(image, **kwargs):
 
     Returns:
         tuple: A tuple containing:
-            LDiPv_hist (numpy.ndarray): Histogram(s) of LDiPv descriptors.
-            imgDesc (numpy.ndarray): LDiPv descriptors themselves.
+            LDiPv_hist (cupy.ndarray): Histogram(s) of LDiPv descriptors.
+            imgDesc (cupy.ndarray): LDiPv descriptors themselves.
 
     Raises:
         TypeError: If the `image` is not a valid `numpy.ndarray`.
@@ -44,51 +46,52 @@ def LDiPv(image, **kwargs):
     options = validate_mode(options)
 
     # Define Kirsch masks
-    Kirsch = [np.array([[-3, -3, 5], [-3, 0, 5], [-3, -3, 5]]),
-              np.array([[-3, 5, 5], [-3, 0, 5], [-3, -3, -3]]),
-              np.array([[5, 5, 5], [-3, 0, -3], [-3, -3, -3]]),
-              np.array([[5, 5, -3], [5, 0, -3], [-3, -3, -3]]),
-              np.array([[5, -3, -3], [5, 0, -3], [5, -3, -3]]),
-              np.array([[-3, -3, -3], [5, 0, -3], [5, 5, -3]]),
-              np.array([[-3, -3, -3], [-3, 0, -3], [5, 5, 5]]),
-              np.array([[-3, -3, -3], [-3, 0, 5], [-3, 5, 5]])]
+    Kirsch = [cp.array([[-3, -3, 5], [-3, 0, 5], [-3, -3, 5]]),
+              cp.array([[-3, 5, 5], [-3, 0, 5], [-3, -3, -3]]),
+              cp.array([[5, 5, 5], [-3, 0, -3], [-3, -3, -3]]),
+              cp.array([[5, 5, -3], [5, 0, -3], [-3, -3, -3]]),
+              cp.array([[5, -3, -3], [5, 0, -3], [5, -3, -3]]),
+              cp.array([[-3, -3, -3], [5, 0, -3], [5, 5, -3]]),
+              cp.array([[-3, -3, -3], [-3, 0, -3], [5, 5, 5]]),
+              cp.array([[-3, -3, -3], [-3, 0, 5], [-3, 5, 5]])]
 
     # Compute the response of the image to each Kirsch mask
-    maskResponses = np.zeros((image.shape[0], image.shape[1], 8))
+    maskResponses = cp.zeros((image.shape[0], image.shape[1], 8))
     for i, kirsch_mask in enumerate(Kirsch, start=1):
         maskResponses[:, :, i - 1] = convolve2d(image, kirsch_mask, mode='same')
 
     # Take the absolute value of the mask responses
-    maskResponsesAbs = np.abs(maskResponses)
+    maskResponsesAbs = cp.abs(maskResponses)
 
     # Sort the mask responses to find the strongest responses
-    ind = np.argsort(maskResponsesAbs, axis=2)[:, :, ::-1]
+    ind = cp.argsort(maskResponsesAbs, axis=2)[:, :, ::-1]
 
     # Create a binary 8-bit array based on the top 3 strongest responses
-    bit8array = np.zeros((image.shape[0], image.shape[1], 8))
+    bit8array = cp.zeros((image.shape[0], image.shape[1], 8))
     bit8array[(ind == 0) | (ind == 1) | (ind == 2)] = 1
 
     # Generate the LDiPv descriptor for each pixel
-    imgDesc = np.zeros_like(image)
-    for r in range(image.shape[0]):
-        codebit = np.reshape(bit8array[r, :, ::-1], (image.shape[1], -1))
-        imgDesc[r, :] = np.array([int(''.join(map(str, row.astype(np.uint8))), 2) for row in codebit])
+    imgDesc = cp.zeros_like(image)
+    flipped_bit8array = cp.flip(bit8array, axis=2)  # Reverse the third dimension
+    reshaped_bit8array = cp.reshape(flipped_bit8array, (image.shape[0], image.shape[1], -1))
+    power_matrix = cp.power(2, cp.arange(reshaped_bit8array.shape[2] - 1, -1, -1))
+    imgDesc = cp.dot(reshaped_bit8array, power_matrix)
 
     # Define the unique bins for the histogram
-    uniqueBin = np.array([7, 11, 13, 14, 19, 21, 22, 25, 26, 28, 35, 37, 38, 41, 42, 44, 49, 50, 52, 56, 67, 69,
+    uniqueBin = cp.array([7, 11, 13, 14, 19, 21, 22, 25, 26, 28, 35, 37, 38, 41, 42, 44, 49, 50, 52, 56, 67, 69,
                           70, 73, 74, 76, 81, 82, 84, 88, 97, 98, 100, 104, 112, 131, 133, 134, 137, 138, 140, 145,
                           146, 148, 152, 161, 162, 164, 168, 176, 193, 194, 196, 200, 208, 224])
 
     # Compute the variance of the mask responses
-    varianceImg = np.var(maskResponsesAbs, axis=2)
+    varianceImg = cp.var(maskResponsesAbs, axis=2)
     options['weight'] = varianceImg
     options['binVec'] = uniqueBin
 
     # Compute LDiPv histogram
-    LDiPv_hist = np.zeros(len(options['binVec']))
+    LDiPv_hist = cp.zeros(len(options['binVec']))
     for i, bin_val in enumerate(options['binVec']):
-        LDiPv_hist[i] = np.sum(options['weight'][imgDesc == bin_val])
+        LDiPv_hist[i] = cp.sum(options['weight'][imgDesc == bin_val])
     if 'mode' in options and options['mode'] == 'nh':
-        LDiPv_hist = LDiPv_hist / np.sum(LDiPv_hist)
+        LDiPv_hist = LDiPv_hist / cp.sum(LDiPv_hist)
 
     return LDiPv_hist, imgDesc

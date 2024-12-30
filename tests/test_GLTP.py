@@ -1,13 +1,13 @@
 import unittest
-import numpy as np
-from lfepy.Descriptor import GLTP  # Replace with the actual module name
+import cupy as cp
+from lfepy.Descriptor import GLTP
 
 
 class TestGLTP(unittest.TestCase):
 
     def setUp(self):
         # Create a sample image for testing (e.g., 8x8 grayscale image)
-        self.image = np.array([
+        self.image = cp.array([
             [52, 55, 61, 59, 79, 61, 76, 61],
             [62, 59, 55, 104, 94, 85, 59, 71],
             [63, 65, 66, 113, 144, 104, 63, 72],
@@ -16,12 +16,12 @@ class TestGLTP(unittest.TestCase):
             [68, 79, 60, 70, 77, 66, 58, 75],
             [69, 85, 64, 58, 55, 61, 65, 83],
             [70, 87, 69, 68, 65, 73, 78, 90]
-        ], dtype=np.uint8)
+        ], dtype=cp.uint8)
 
     def test_gltp_default_mode(self):
         # Test GLTP with default parameters
         gltp_hist, imgDesc = GLTP(self.image)
-        self.assertIsInstance(gltp_hist, np.ndarray)
+        self.assertIsInstance(gltp_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertGreater(len(imgDesc), 0)  # Check if imgDesc is not empty
         self.assertEqual(gltp_hist.ndim, 1)  # Should be a 1D array
@@ -29,7 +29,7 @@ class TestGLTP(unittest.TestCase):
     def test_gltp_histogram_mode(self):
         # Test GLTP with histogram mode ('h')
         gltp_hist, imgDesc = GLTP(self.image, mode='h')
-        self.assertIsInstance(gltp_hist, np.ndarray)
+        self.assertIsInstance(gltp_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertGreater(len(imgDesc), 0)  # Check if imgDesc is not empty
         self.assertEqual(gltp_hist.ndim, 1)  # Should be a 1D array
@@ -37,19 +37,19 @@ class TestGLTP(unittest.TestCase):
     def test_gltp_normalization_mode(self):
         # Test if the GLTP histogram is normalized in 'nh' mode
         gltp_hist, _ = GLTP(self.image, mode='nh')
-        self.assertAlmostEqual(np.sum(gltp_hist), 1.0)
+        self.assertAlmostEqual(cp.sum(gltp_hist).get(), 1.0)
 
     def test_gltp_threshold(self):
         # Test GLTP with a custom threshold value
         gltp_hist, imgDesc = GLTP(self.image, t=20)
-        self.assertIsInstance(gltp_hist, np.ndarray)
+        self.assertIsInstance(gltp_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertGreater(len(imgDesc), 0)  # Check if imgDesc is not empty
 
     def test_gltp_dglp_flag(self):
         # Test GLTP with DGLP flag set to 1
         gltp_hist, imgDesc = GLTP(self.image, DGLP=1)
-        self.assertIsInstance(gltp_hist, np.ndarray)
+        self.assertIsInstance(gltp_hist, cp.ndarray)
         self.assertIsInstance(imgDesc, list)
         self.assertGreater(len(imgDesc), 1)  # Check if imgDesc includes angle feature
 
@@ -69,7 +69,7 @@ class TestGLTP(unittest.TestCase):
             GLTP(None)
 
     def test_gltp_with_non_array_image(self):
-        # Test GLTP with a non-numpy array image
+        # Test GLTP with a non-CuPy array image
         with self.assertRaises(TypeError):
             GLTP("invalid_image")
 
