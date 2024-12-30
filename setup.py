@@ -1,7 +1,11 @@
 from setuptools import setup, find_packages
 
 setup(
+<<<<<<< HEAD
     name='lfepy-gpu',
+=======
+    name='lfepy-cpu',
+>>>>>>> 78f4ee7ae3bdd4944e6b367a44f03890445d5cb9
     version='1.0.0',
     author='Dr. Prof. Khalid M. Hosny, MSc. Mahmoud A. Mohamed, Dr. Essa E. Almazroei',
     author_email='lfepy@gmail.com',
