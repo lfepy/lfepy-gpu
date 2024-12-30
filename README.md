@@ -14,7 +14,7 @@
 
 ## Overview
 
-**lfepy-gpu** is a CPU-based Python package for local feature extraction. It contains 27 different descriptors that can be used for various tasks in computer vision and image processing.
+**lfepy-gpu** is a GPU-based Python package for local feature extraction. It contains 27 different descriptors that can be used for various tasks in computer vision and image processing.
 
 ## Features
 
