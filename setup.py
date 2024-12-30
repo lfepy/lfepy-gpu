@@ -20,7 +20,7 @@ setup(
     ],
     test_suite='tests',
     tests_require=[
-        'unit test',  # Example test framework
+        'unittest',  # Example test framework
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
