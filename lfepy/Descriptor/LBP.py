@@ -29,12 +29,18 @@ def LBP(image, **kwargs):
         >>> import matplotlib.pyplot as plt
         >>> from matplotlib.image import imread
 
-        >>> image = cp.asarray(imread("Path"))
+        >>> image = imread("Path")
         >>> histogram, imgDesc = LBP(image, mode='nh', radius=1, mappingType='full')
 
-        >>> plt.imshow(cp.asnumpy(imgDesc), cmap='gray')
+        >>> plt.imshow(imgDesc, cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
+
+    References:
+        T. Ojala, M. Pietikainen, and T. Maenpaa,
+        Multi-resolution gray-scale and rotation invariant texture classification with local binary patterns,
+        IEEE Transactions on Pattern Analysis and Machine Intelligence,
+        vol. 24, pp. 971-987, 2002.
     """
     # Input data validation
     image = validate_image(image)

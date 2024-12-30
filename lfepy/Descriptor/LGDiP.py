@@ -34,6 +34,11 @@ def LGDiP(image, **kwargs):
         >>> plt.axis('off')
         >>> plt.show()
 
+    References:
+        S.Z. Ishraque, A.H. Banna, and O. Chae,
+        Local Gabor Directional Pattern for Facial Expression Recognition,
+        ICCIT 2012: 15th International Conference on Computer and Information Technology, IEEE,
+        2012, pp. 164-167.
     """
     # Input data validation
     image = validate_image(image)

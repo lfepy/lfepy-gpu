@@ -25,6 +25,23 @@ def LGBPHS(image, **kwargs):
     Raises:
         TypeError: If the `image` is not a valid `numpy.ndarray`.
         ValueError: If the `mode` in `kwargs` is not a valid option.
+
+    Example:
+        >>> import matplotlib.pyplot as plt
+        >>> from matplotlib.image import imread
+
+        >>> image = imread("Path")
+        >>> histogram, imgDesc = LGBPHS(image, mode='nh', uniformLBP=1, scaleNum=5, orienNum=8)
+
+        >>> plt.imshow(imgDesc[0]['fea'], cmap='gray')
+        >>> plt.axis('off')
+        >>> plt.show()
+
+    References:
+        W. Zhang, S. Shan, W. Gao, X. Chen, and H. Zhang,
+        Local Gabor Binary Pattern Histogram Sequence (LGBPHS): A Novel Non-Statistical Model for Face Representation and Recognition,
+        ICCV 2005: Tenth IEEE International Conference on Computer Vision, IEEE,
+        2005, pp. 786-791.
     """
     # Input data validation
     image = validate_image(image)
