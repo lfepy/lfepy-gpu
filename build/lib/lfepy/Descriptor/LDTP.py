@@ -31,7 +31,7 @@ def LDTP(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = LDTP(image, mode='nh', epsi=15)
 
-        >>> plt.imshow(imgDesc, cmap='gray')
+        >>> plt.imshow(imgDesc.get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

@@ -34,10 +34,10 @@ def MRELBP(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = MRELBP(image, mode='nh')
 
-        >>> plt.imshow(imgDesc[0]['fea']['NILBPImage'], cmap='gray')
+        >>> plt.imshow(imgDesc[0]['fea']['NILBPImage'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
-        >>> plt.imshow(imgDesc[0]['fea']['RDLBPImage'], cmap='gray')
+        >>> plt.imshow(imgDesc[0]['fea']['RDLBPImage'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

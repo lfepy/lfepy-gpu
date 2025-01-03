@@ -31,7 +31,7 @@ def LPQ(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = LPQ(image, mode='nh', windowSize=5)
 
-        >>> plt.imshow(imgDesc, cmap='gray')
+        >>> plt.imshow(imgDesc.get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

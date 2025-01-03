@@ -32,10 +32,10 @@ def WLD(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = WLD(image, mode='nh', T=8, N=4, scaleTop=1)
 
-        >>> plt.imshow(imgDesc[0]['fea']['GO'], cmap='gray')
+        >>> plt.imshow(imgDesc[0]['fea']['GO'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
-        >>> plt.imshow(imgDesc[1]['fea']['DE'], cmap='gray')
+        >>> plt.imshow(imgDesc[1]['fea']['DE'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

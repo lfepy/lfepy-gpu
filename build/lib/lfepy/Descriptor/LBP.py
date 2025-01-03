@@ -32,7 +32,7 @@ def LBP(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = LBP(image, mode='nh', radius=1, mappingType='full')
 
-        >>> plt.imshow(imgDesc, cmap='gray')
+        >>> plt.imshow(imgDesc.get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

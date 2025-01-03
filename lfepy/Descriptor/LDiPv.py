@@ -30,7 +30,7 @@ def LDiPv(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = LDiPv(image, mode='nh')
 
-        >>> plt.imshow(imgDesc, cmap='gray')
+        >>> plt.imshow(imgDesc.get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

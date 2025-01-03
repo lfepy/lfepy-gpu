@@ -33,7 +33,7 @@ def LDN(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = LDN(image, mode='nh', mask='kirsch', msize=3, start=0.5)
 
-        >>> plt.imshow(imgDesc[0]['fea'], cmap='gray')
+        >>> plt.imshow(imgDesc[0]['fea'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

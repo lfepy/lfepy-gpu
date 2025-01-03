@@ -29,7 +29,7 @@ def LTrP(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = LTrP(image, mode='nh')
 
-        >>> plt.imshow(imgDesc, cmap='gray')
+        >>> plt.imshow(imgDesc.get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

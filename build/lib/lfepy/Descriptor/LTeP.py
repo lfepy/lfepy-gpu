@@ -30,7 +30,7 @@ def LTeP(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = LTeP(image, mode='nh', t=2)
 
-        >>> plt.imshow(imgDesc[0]['fea'], cmap='gray')
+        >>> plt.imshow(imgDesc[0]['fea'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

@@ -30,7 +30,7 @@ def MTP(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = MTP(image, mode='nh', t=10)
 
-        >>> plt.imshow(imgDesc[0]['fea'], cmap='gray')
+        >>> plt.imshow(imgDesc[0]['fea'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

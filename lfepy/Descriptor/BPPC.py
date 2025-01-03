@@ -28,10 +28,9 @@ def BPPC(image, **kwargs):
         >>> from matplotlib.image import imread
 
         >>> image = imread("Path")
-        >>> image = cp.array(image)
         >>> histogram, imgDesc = BPPC(image, mode='nh')
 
-        >>> plt.imshow(cp.asnumpy(imgDesc[0]['fea']), cmap='gray')
+        >>> plt.imshow(imgDesc[0]['fea'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

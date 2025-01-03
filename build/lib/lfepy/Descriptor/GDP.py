@@ -33,7 +33,7 @@ def GDP(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = GDP(image, mode='nh', mask='sobel', t=22.5)
 
-        >>> plt.imshow(imgDesc, cmap='gray')
+        >>> plt.imshow(imgDesc.get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

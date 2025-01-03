@@ -29,7 +29,7 @@ def LAP(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = LAP(image, mode='nh')
 
-        >>> plt.imshow(imgDesc[0]['fea'], cmap='gray')
+        >>> plt.imshow(imgDesc[0]['fea'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 

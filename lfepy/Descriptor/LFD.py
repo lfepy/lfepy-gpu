@@ -30,7 +30,7 @@ def LFD(image, **kwargs):
         >>> image = imread("Path")
         >>> histogram, imgDesc = LFD(image, mode='nh')
 
-        >>> plt.imshow(imgDesc[0]['fea'], cmap='gray')
+        >>> plt.imshow(imgDesc[0]['fea'].get(), cmap='gray')
         >>> plt.axis('off')
         >>> plt.show()
 
