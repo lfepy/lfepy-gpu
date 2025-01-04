@@ -142,9 +142,9 @@ def MRELBP(image, **kwargs):
         cp.add.at(Joint_CINIRD, (indices[:, 0], indices[:, 1], indices[:, 2]), 1)
         # Flatten the result for concatenation
         Joint_CINIRD = Joint_CINIRD.flatten()
-
         # Append the histogram to the MRELBP_hist array
         MRELBP_hist = cp.hstack((MRELBP_hist, Joint_CINIRD))
+
     if 'mode' in options and options['mode'] == 'nh':
         MRELBP_hist = MRELBP_hist / cp.sum(MRELBP_hist)
 

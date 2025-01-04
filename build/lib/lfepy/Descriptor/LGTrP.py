@@ -60,11 +60,10 @@ def LGTrP(image, **kwargs):
     options['binVec'] = cp.arange(256)
 
     # Compute LGTrP histogram
-    LGTrP_hist = cp.zeros(len(options['binVec']), dtype=cp.float32)
-    for i, bin_val in enumerate(options['binVec']):
-        LGTrP_hist[i] = cp.sum(imgDesc == bin_val)
+    LGTrP_hist = cp.zeros(len(options['binVec']))
+    LGTrP_hist = cp.bincount(cp.searchsorted(options['binVec'], cp.ravel(imgDesc)), minlength=len(options['binVec']))
 
     if 'mode' in options and options['mode'] == 'nh':
-        LGTrP_hist /= cp.sum(LGTrP_hist)
+        LGTrP_hist = LGTrP_hist / cp.sum(LGTrP_hist)
 
     return LGTrP_hist, imgDesc

@@ -66,14 +66,13 @@ def LTrP(image, **kwargs):
         imgDesc += cp.logical_xor((x_p1 - x_c) >= 0, (x_p2 - x_c) >= 0) * 2 ** (len(link_list) - n - 1)
 
     # Set bin vectors
-    options['binVec'] = cp.arange(256)  # CuPy array for bin vectors
+    options['binVec'] = cp.arange(256)
 
     # Compute LTrP histogram
-    LTrP_hist = cp.zeros(len(options['binVec']))  # CuPy array for histogram
-    for i, bin_val in enumerate(options['binVec']):
-        LTrP_hist[i] = cp.sum(imgDesc == bin_val)  # CuPy sum operation
+    LTrP_hist = cp.zeros(len(options['binVec']))
+    LTrP_hist = cp.bincount(cp.searchsorted(options['binVec'], cp.ravel(imgDesc)), minlength=len(options['binVec']))
 
     if 'mode' in options and options['mode'] == 'nh':
-        LTrP_hist = LTrP_hist / cp.sum(LTrP_hist)  # Normalize histogram using CuPy sum
+        LTrP_hist = LTrP_hist / cp.sum(LTrP_hist)
 
     return LTrP_hist, imgDesc

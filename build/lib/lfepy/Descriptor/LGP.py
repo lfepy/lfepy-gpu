@@ -57,13 +57,13 @@ def LGP(image, **kwargs):
     imgDesc = path1 + path2
 
     # Set bin vectors
-    options['binVec'] = cp.arange(4, 11)  # CuPy array
+    options['binVec'] = cp.arange(4, 11)
 
     # Compute LGP histogram
-    LGP_hist = cp.zeros(len(options['binVec']))  # CuPy array
-    for i, bin_val in enumerate(options['binVec']):
-        LGP_hist[i] = cp.sum(imgDesc == bin_val)  # CuPy sum operation
+    LGP_hist = cp.zeros(len(options['binVec']))
+    LGP_hist = cp.bincount(cp.searchsorted(options['binVec'], cp.ravel(imgDesc)), minlength=len(options['binVec']))
+
     if 'mode' in options and options['mode'] == 'nh':
-        LGP_hist = LGP_hist / cp.sum(LGP_hist)  # Normalize histogram
+        LGP_hist = LGP_hist / cp.sum(LGP_hist)
 
     return LGP_hist, imgDesc

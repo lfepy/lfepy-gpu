@@ -74,29 +74,13 @@ def LGBPHS(image, **kwargs):
     # Compute LGBPHS histogram using CuPy
     LGBPHS_hist = []
     for s in range(len(imgDesc)):
-        imgReg = imgDesc[s]['fea']
-        for i, bin_val in enumerate(options['binVec'][s]):
-            hh = cp.sum(imgReg == bin_val)
-            LGBPHS_hist.append(hh)
+        imgReg = cp.array(imgDesc[s]['fea'])
+        binVec = cp.array(options['binVec'][s])
+        # Vectorized counting for each bin value
+        hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
+        LGBPHS_hist.extend(hist)
     LGBPHS_hist = cp.array(LGBPHS_hist)
     if 'mode' in options and options['mode'] == 'nh':
         LGBPHS_hist = LGBPHS_hist / cp.sum(LGBPHS_hist)
 
     return LGBPHS_hist, imgDesc
-
-
-if __name__ == '__main__':
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from matplotlib.image import imread
-    from PIL import Image
-    import time as t
-    import os
-
-    data_dir = "D:/Datasets/ILSVRC_train"
-    start = t.time()
-    for i, image_path in enumerate(os.listdir(data_dir)):
-        image_path = data_dir + '/' + image_path
-        histogram, imgDesc = LGBPHS(imread(image_path), mode='nh')
-    end = t.time()
-    print(end - start)

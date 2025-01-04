@@ -57,9 +57,7 @@ def LBP(image, **kwargs):
     # Compute LBP histogram
     binVec = cp.array(options['binVec'])
     LBP_hist = cp.zeros(len(binVec), dtype=cp.float32)
-
-    for i, bin_val in enumerate(binVec):
-        LBP_hist[i] = cp.sum(imgDesc == bin_val)
+    LBP_hist = cp.bincount(cp.searchsorted(options['binVec'], cp.ravel(imgDesc)), minlength=len(options['binVec']))
 
     if mode == 'nh':
         LBP_hist = LBP_hist / cp.sum(LBP_hist)

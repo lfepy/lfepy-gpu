@@ -73,8 +73,8 @@ def GDP2(image, **kwargs):
 
     # Compute GDP2 histogram
     GDP2_hist = cp.zeros(len(options['binVec']))
-    for i, bin_val in enumerate(cp.asarray(options['binVec'])):
-        GDP2_hist[i] = cp.sum(imgDesc == bin_val)
+    GDP2_hist = cp.bincount(cp.searchsorted(options['binVec'], cp.ravel(imgDesc)), minlength=len(options['binVec']))
+
     GDP2_hist = GDP2_hist[transitionSelected]
 
     if 'mode' in options and options['mode'] == 'nh':

@@ -76,11 +76,13 @@ def LAP(image, **kwargs):
     # Compute LAP histogram
     LAP_hist = []
     for s in range(len(imgDesc)):
-        imgReg = imgDesc[s]['fea']
-        for i, bin_val in enumerate(options['binVec'][s]):
-            hh = cp.sum(imgReg == bin_val)
-            LAP_hist.append(hh)
+        imgReg = cp.array(imgDesc[s]['fea'])
+        binVec = cp.array(options['binVec'][s])
+        # Vectorized counting for each bin value
+        hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
+        LAP_hist.extend(hist)
     LAP_hist = cp.array(LAP_hist)
+
     if 'mode' in options and options['mode'] == 'nh':
         LAP_hist = LAP_hist / cp.sum(LAP_hist)
 

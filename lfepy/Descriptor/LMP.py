@@ -67,13 +67,13 @@ def LMP(image, **kwargs):
         imgDesc += ((((x_i1 - x_c) >= 0) & ((x_i2 - x_i1) >= 0)) * 2 ** (8 - n - 1))
 
     # Set bin vectors
-    options['binVec'] = cp.arange(256)  # CuPy array
+    options['binVec'] = cp.arange(256)
 
     # Compute LMP histogram
-    LMP_hist = cp.zeros(len(options['binVec']), dtype=cp.float64)  # CuPy array
-    for i, bin_val in enumerate(options['binVec']):
-        LMP_hist[i] = cp.sum(imgDesc == bin_val)  # CuPy sum operation
+    LMP_hist = cp.zeros(len(options['binVec']))
+    LMP_hist = cp.bincount(cp.searchsorted(options['binVec'], cp.ravel(imgDesc)), minlength=len(options['binVec']))
+
     if 'mode' in options and options['mode'] == 'nh':
-        LMP_hist = LMP_hist / cp.sum(LMP_hist)  # Normalize histogram
+        LMP_hist = LMP_hist / cp.sum(LMP_hist)
 
     return LMP_hist, imgDesc

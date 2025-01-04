@@ -58,12 +58,11 @@ def LPQ(image, **kwargs):
     else:
         imgDesc, _ = descriptor_LPQ(cp.asarray(image), wSz)
 
-    options['binVec'] = cp.arange(256)  # Use CuPy for the bin vector
+    options['binVec'] = cp.arange(256)
 
     # Compute LPQ histogram
-    LPQ_hist = cp.zeros(len(options['binVec']), dtype=cp.int32)
-    for i, bin_val in enumerate(options['binVec']):
-        LPQ_hist[i] = cp.sum(imgDesc == bin_val)
+    LPQ_hist = cp.zeros(len(options['binVec']))
+    LPQ_hist = cp.bincount(cp.searchsorted(options['binVec'], cp.ravel(imgDesc)), minlength=len(options['binVec']))
 
     # Normalize histogram if required
     if 'mode' in options and options['mode'] == 'nh':

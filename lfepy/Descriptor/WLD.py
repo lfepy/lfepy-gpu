@@ -124,8 +124,8 @@ def WLD(image, **kwargs):
             orienHist, _ = cp.histogram(orien, bins=range(N + 1))
             hh.extend(orienHist)
         WLD_hist.extend(hh)
-
     WLD_hist = cp.array(WLD_hist)
+
     if 'mode' in options and options['mode'] == 'nh':
         WLD_hist = WLD_hist / cp.sum(WLD_hist)
 

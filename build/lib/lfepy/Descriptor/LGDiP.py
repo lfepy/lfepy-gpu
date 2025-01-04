@@ -76,11 +76,13 @@ def LGDiP(image, **kwargs):
     # Compute LGDiP histogram
     LGDiP_hist = []
     for s in range(len(imgDesc)):
-        imgReg = imgDesc[s]['fea']
-        for i, bin_val in enumerate(options['binVec'][s]):
-            hh = cp.sum(imgReg == bin_val)
-            LGDiP_hist.append(hh)
-    LGDiP_hist = cp.array(LGDiP_hist, dtype=cp.float32)
+        imgReg = cp.array(imgDesc[s]['fea'])
+        binVec = cp.array(options['binVec'][s])
+        # Vectorized counting for each bin value
+        hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
+        LGDiP_hist.extend(hist)
+    LGDiP_hist = cp.array(LGDiP_hist)
+
     if 'mode' in options and options['mode'] == 'nh':
         LGDiP_hist = LGDiP_hist / cp.sum(LGDiP_hist)
 

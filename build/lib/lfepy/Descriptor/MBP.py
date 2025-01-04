@@ -64,14 +64,13 @@ def MBP(image, **kwargs):
     imgDesc = cp.dot(MBP.astype(cp.uint8), 1 << cp.arange(MBP.shape[1] - 1, -1, -1)).reshape(rSize, cSize)
 
     # Set bin vectors
-    options['binVec'] = cp.arange(256)  # CuPy array for bin vectors
+    options['binVec'] = cp.arange(256)
 
     # Compute MBP histogram
-    MBP_hist = cp.zeros(len(options['binVec']), dtype=cp.float64)  # CuPy array for histogram
-    for i, bin_val in enumerate(options['binVec']):
-        MBP_hist[i] = cp.sum(imgDesc == bin_val)  # CuPy sum operation
+    MBP_hist = cp.zeros(len(options['binVec']))
+    MBP_hist = cp.bincount(cp.searchsorted(options['binVec'], cp.ravel(imgDesc)), minlength=len(options['binVec']))
 
     if 'mode' in options and options['mode'] == 'nh':
-        MBP_hist = MBP_hist / cp.sum(MBP_hist)  # Normalize histogram using CuPy sum
+        MBP_hist = MBP_hist / cp.sum(MBP_hist)
 
     return MBP_hist, imgDesc

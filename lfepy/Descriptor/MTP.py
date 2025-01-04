@@ -70,17 +70,19 @@ def MTP(image, **kwargs):
         {'fea': cp.dot(Nmtp.astype(cp.uint8), 1 << cp.arange(Nmtp.shape[1] - 1, -1, -1)).reshape(rSize, cSize)}
     ]
 
-    options['binVec'] = [cp.arange(256), cp.arange(256)]  # CuPy array for bin vectors
+    options['binVec'] = [cp.arange(256), cp.arange(256)]
 
     # Compute MTP histogram
     MTP_hist = []
     for s in range(len(imgDesc)):
-        imgReg = imgDesc[s]['fea']
-        for i, bin_val in enumerate(options['binVec'][s]):
-            hh = cp.sum(imgReg == bin_val)  # CuPy sum operation
-            MTP_hist.append(hh)
+        imgReg = cp.array(imgDesc[s]['fea'])
+        binVec = cp.array(options['binVec'][s])
+        # Vectorized counting for each bin value
+        hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
+        MTP_hist.extend(hist)
     MTP_hist = cp.array(MTP_hist)
+
     if 'mode' in options and options['mode'] == 'nh':
-        MTP_hist = MTP_hist / cp.sum(MTP_hist)  # Normalize histogram using CuPy sum
+        MTP_hist = MTP_hist / cp.sum(MTP_hist)
 
     return MTP_hist, imgDesc

@@ -73,11 +73,13 @@ def LTeP(image, **kwargs):
     # Compute LTeP histogram
     LTeP_hist = []
     for s in range(len(imgDesc)):
-        imgReg = imgDesc[s]['fea']
-        for i, bin_val in enumerate(options['binVec'][s]):
-            hh = cp.sum(imgReg == bin_val)
-            LTeP_hist.append(hh)
+        imgReg = cp.array(imgDesc[s]['fea'])
+        binVec = cp.array(options['binVec'][s])
+        # Vectorized counting for each bin value
+        hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
+        LTeP_hist.extend(hist)
     LTeP_hist = cp.array(LTeP_hist)
+
     if 'mode' in options and options['mode'] == 'nh':
         LTeP_hist = LTeP_hist / cp.sum(LTeP_hist)
 

@@ -65,11 +65,13 @@ def BPPC(image, **kwargs):
     # Compute BPPC histogram
     BPPC_hist = []
     for s in range(len(imgDesc)):
-        imgReg = imgDesc[s]['fea']
-        for i, bin_val in enumerate(options['binVec'][s]):
-            hh = cp.sum(imgReg == bin_val)
-            BPPC_hist.append(hh)
+        imgReg = cp.array(imgDesc[s]['fea'])
+        binVec = cp.array(options['binVec'][s])
+        # Vectorized counting for each bin value
+        hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
+        BPPC_hist.extend(hist)
     BPPC_hist = cp.array(BPPC_hist)
+
     if 'mode' in options and options['mode'] == 'nh':
         BPPC_hist = BPPC_hist / cp.sum(BPPC_hist)
 

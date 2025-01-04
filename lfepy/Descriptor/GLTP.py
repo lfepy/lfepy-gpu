@@ -88,11 +88,13 @@ def GLTP(image, **kwargs):
     # Compute GLTP histogram
     GLTP_hist = []
     for s in range(len(imgDesc)):
-        imgReg = imgDesc[s]['fea']
-        for i, bin_val in enumerate(options['binVec'][s]):
-            hh = cp.sum(imgReg == bin_val)
-            GLTP_hist.append(hh)
+        imgReg = cp.array(imgDesc[s]['fea'])
+        binVec = cp.array(options['binVec'][s])
+        # Vectorized counting for each bin value
+        hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
+        GLTP_hist.extend(hist)
     GLTP_hist = cp.array(GLTP_hist)
+
     if 'mode' in options and options['mode'] == 'nh':
         GLTP_hist = GLTP_hist / cp.sum(GLTP_hist)
 
