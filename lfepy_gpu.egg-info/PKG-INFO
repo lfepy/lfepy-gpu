@@ -1,9 +1,9 @@
 Metadata-Version: 2.1
-Name: lfepy
-Version: 1.0.9
+Name: lfepy-gpu
+Version: 1.0.0
 Summary: lfepy is a Python package for local feature extraction.
-Home-page: https://github.com/lfepy/lfepy
-Author: Dr. Prof. Khalid M. Hosny, BSc. Mahmoud A. Mohamed, Dr. Essa E. Almazroei
+Home-page: https://github.com/lfepy/lfepy-gpu
+Author: Dr. Prof. Khalid M. Hosny, MSc. Mahmoud A. Mohamed
 Author-email: lfepy@gmail.com
 Classifier: Programming Language :: Python :: 3
 Classifier: License :: OSI Approved :: MIT License
@@ -11,11 +11,12 @@ Classifier: Operating System :: OS Independent
 Requires-Python: >=3.0
 Description-Content-Type: text/markdown
 License-File: LICENSE.md
+Requires-Dist: cupy-cuda11x>=13.3.0
 Requires-Dist: numpy>=1.26.4
 Requires-Dist: scipy>=1.13.0
 Requires-Dist: scikit-image>=0.23.2
 
-# lfepy
+# lfepy-gpu
 
 **Local Feature Extractors for Python** is a Python package for local descriptors. It provides feature extraction from grayscale images, facilitating AI tasks like object detection, facial recognition, and classification.
 
@@ -31,7 +32,7 @@ Requires-Dist: scikit-image>=0.23.2
 
 ## Overview
 
-**lfepy** is a Python package for local feature extraction. It contains 27 different descriptors that can be used for various tasks in computer vision and image processing.
+**lfepy-gpu** is a GPU-based Python package for local feature extraction. It contains 27 different descriptors that can be used for various tasks in computer vision and image processing.
 
 ## Features
 
@@ -42,6 +43,7 @@ Requires-Dist: scikit-image>=0.23.2
 ## Requirements
 
 - **python>=3.0**
+- **cupy-cuda11x>=13.3.0**
 - **numpy>=1.26.4**
 - **scipy>=1.13.0**
 - **scikit-image>=0.23.2**
@@ -51,7 +53,11 @@ Requires-Dist: scikit-image>=0.23.2
 To install lfepy, use the following command:
 
 ```bash
-pip install lfepy
+pip install lfepy-gpu
+```
+or
+```bash
+pip install git+https://github.com/lfepy/lfepy-gpu.git
 ```
 ## Usage
 Basic Example
@@ -66,7 +72,7 @@ image = imread("PATH")
 # Extract feature using a specified descriptor
 histogram, imgDesc = LBP(image, mode='nh', radius=1, mappingType='riu2')
 # Show the descriptor
-plt.imshow(imgDesc, cmap='gray')
+plt.imshow(imgDesc.get(), cmap='gray')
 plt.axis('off')
 plt.show()
 ```
