@@ -37,6 +37,10 @@ To install lfepy, use the following command:
 ```bash
 pip install lfepy-gpu
 ```
+or
+```bash
+pip install git+https://github.com/lfepy/lfepy-gpu.git
+```
 ## Usage
 Basic Example
 ```python
@@ -50,7 +54,7 @@ image = imread("PATH")
 # Extract feature using a specified descriptor
 histogram, imgDesc = LBP(image, mode='nh', radius=1, mappingType='riu2')
 # Show the descriptor
-plt.imshow(imgDesc, cmap='gray')
+plt.imshow(imgDesc.get(), cmap='gray')
 plt.axis('off')
 plt.show()
 ```
