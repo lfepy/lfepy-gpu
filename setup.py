@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='lfepy-gpu',
-    version='1.0.0',
+    version='1.0.1',
     author='Dr. Prof. Khalid M. Hosny, MSc. Mahmoud A. Mohamed',
     author_email='lfepy@gmail.com',
     description='lfepy is a Python package for local feature extraction.',
