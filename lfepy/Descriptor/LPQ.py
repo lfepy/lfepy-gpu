@@ -52,11 +52,7 @@ def LPQ(image, **kwargs):
     options = validate_mode(options)
     wSz = validate_windowSize(options)
 
-    # Ensure the image is a CuPy array (convert if necessary)
-    if isinstance(image, cp.ndarray):
-        imgDesc, _ = descriptor_LPQ(image, wSz)
-    else:
-        imgDesc, _ = descriptor_LPQ(cp.asarray(image), wSz)
+    imgDesc, _ = descriptor_LPQ(image, wSz)
 
     options['binVec'] = cp.arange(256)
 

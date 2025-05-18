@@ -45,9 +45,10 @@ def cirInterpSingleRadius_ct(img, lbpPoints, lbpRadius):
     spoints = cp.zeros((neighbors, 2))
     angleStep = 2 * cp.pi / neighbors
 
-    for i in range(neighbors):
-        spoints[i, 0] = -radius * cp.sin(i * angleStep)
-        spoints[i, 1] = radius * cp.cos(i * angleStep)
+    # Create points in a circular pattern
+    angles = cp.arange(neighbors) * angleStep
+    spoints[:, 0] = -radius * cp.sin(angles)
+    spoints[:, 1] = radius * cp.cos(angles)
 
     # Calculate the size of the blocks considering boundary effects
     miny, maxy = cp.min(spoints[:, 0]), cp.max(spoints[:, 0])

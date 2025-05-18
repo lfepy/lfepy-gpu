@@ -40,11 +40,12 @@ def cirInterpSingleRadiusNew(img, lbpPoints, lbpRadius):
     radius = lbpRadius
     neighbors = lbpPoints
     spoints = cp.zeros((neighbors, 2))
-
     angleStep = 2 * cp.pi / neighbors
-    for i in range(neighbors):
-        spoints[i, 0] = -radius * cp.sin(i * angleStep)
-        spoints[i, 1] = radius * cp.cos(i * angleStep)
+
+    # Vectorized calculation of sampling points
+    angles = cp.arange(neighbors) * angleStep
+    spoints[:, 0] = -radius * cp.sin(angles)
+    spoints[:, 1] = radius * cp.cos(angles)
 
     miny, maxy = cp.min(spoints[:, 0]), cp.max(spoints[:, 0])
     minx, maxx = cp.min(spoints[:, 1]), cp.max(spoints[:, 1])

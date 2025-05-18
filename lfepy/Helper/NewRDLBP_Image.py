@@ -57,9 +57,8 @@ def NewRDLBP_Image(img, imgPre, lbpRadius, lbpRadiusPre, lbpPoints, mapping=None
     # Apply mapping if it is defined
     if mapping is not None:
         bins = mapping['num']
-        table = cp.array(mapping['table'], dtype=cp.int32)
+        table = cp.array(mapping['table'], dtype=cp.uint32)
         result = table[radialDiff.astype(cp.uint32)]
-
     else:
         result = radialDiff
 

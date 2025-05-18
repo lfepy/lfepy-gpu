@@ -3,6 +3,46 @@ warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.r
 import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
+# Define the raw kernel for computing LGP pattern
+lgp_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_lgp_pattern(
+    const double* image,
+    double* pattern,
+    int rows,
+    int cols
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= cols || y >= rows) return;
+
+    int idx = y * cols + x;
+    double val = 0.0;
+
+    // Path 1: Diagonal comparisons
+    double a1 = image[y * (cols + 2) + x];
+    double a3 = image[(y + 2) * (cols + 2) + (x + 2)];
+    double a2 = image[y * (cols + 2) + (x + 2)];
+    double a4 = image[(y + 2) * (cols + 2) + x];
+
+    if (a1 - a3 > 0) val += 2;
+    if (a2 - a4 > 0) val += 1;
+
+    // Path 2: Horizontal and vertical comparisons
+    double b1 = image[y * (cols + 2) + (x + 1)];
+    double b3 = image[(y + 2) * (cols + 2) + (x + 1)];
+    double b2 = image[(y + 1) * (cols + 2) + (x + 2)];
+    double b4 = image[(y + 1) * (cols + 2) + x];
+
+    if (b1 - b3 > 0) val += 2;
+    if (b2 - b4 > 0) val += 1;
+    val += 4;  // Add 4 to match the NumPy version's path2
+
+    pattern[idx] = val;
+}
+''', 'compute_lgp_pattern')
+
 
 def LGP(image, **kwargs):
     """
@@ -44,17 +84,41 @@ def LGP(image, **kwargs):
     options = validate_kwargs(**kwargs)
     options = validate_mode(options)
 
-    # Compute binary patterns for four pairs of pixels
-    a1a3 = ((image[:-2, :-2]) - (image[2:, 2:]) > 0)
-    a2a4 = ((image[:-2, 2:]) - (image[2:, :-2]) > 0)
-    path1 = a1a3 * 2 + a2a4 * 1
+    # Ensure image is float64
+    image = image.astype(cp.float64)
 
-    b1b3 = ((image[:-2, 1:-1]) - (image[2:, 1:-1]) > 0)
-    b2b4 = ((image[1:-1, 2:]) - (image[1:-1, :-2]) > 0)
-    path2 = b1b3 * 2 + b2b4 * 1 + 4
+    # Get dimensions for output
+    rSize, cSize = image.shape[0] - 2, image.shape[1] - 2
 
-    # Combine paths to form the final descriptor
-    imgDesc = path1 + path2
+    # Allocate pattern output
+    pattern = cp.zeros((rSize, cSize), dtype=cp.float64)
+
+    # Get the current CUDA device
+    device = cp.cuda.Device()
+    # Get the maximum threads per block for the device
+    max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+    # Calculate the optimal block size (using a square block for simplicity)
+    block_size = int(cp.sqrt(max_threads_per_block))
+    # Ensure block_size is a multiple of 16 for better memory alignment
+    block_size = (block_size // 16) * 16
+
+    # Calculate grid dimensions
+    threads_per_block = (block_size, block_size)
+    blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
+
+    # Launch kernel
+    lgp_kernel(
+        blocks_per_grid,
+        threads_per_block,
+        (
+            image.ravel(),
+            pattern.ravel(),
+            rSize,
+            cSize
+        )
+    )
+
+    imgDesc = pattern
 
     # Set bin vectors
     options['binVec'] = cp.arange(4, 11)

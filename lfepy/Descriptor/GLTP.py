@@ -5,6 +5,39 @@ from cupyx.scipy.signal import convolve2d
 from lfepy.Descriptor.LTeP import LTeP
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_DGLP
 
+# Define the raw kernel for computing DGLP pattern
+dglp_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_dglp_pattern(
+    const float* Gx,
+    const float* Gy,
+    float* pattern,
+    int rows,
+    int cols,
+    float epsilon
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= cols || y >= rows) return;
+
+    int idx = y * cols + x;
+    float gx = Gx[(y + 1) * (cols + 2) + (x + 1)];
+    float gy = Gy[(y + 1) * (cols + 2) + (x + 1)];
+
+    float angle = atan2(gy, gx + epsilon);
+    angle = degrees(angle);
+
+    if (gx < 0) {
+        angle += 180;
+    } else if (gy < 0) {
+        angle += 360;
+    }
+
+    pattern[idx] = floor(angle / 22.5f);
+}
+''', 'compute_dglp_pattern')
+
 
 def GLTP(image, **kwargs):
     """
@@ -58,8 +91,8 @@ def GLTP(image, **kwargs):
     EPSILON = 1e-7
 
     # Define Sobel masks for gradient computation
-    maskA = cp.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
-    maskB = cp.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+    maskA = cp.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=cp.float32)
+    maskB = cp.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=cp.float32)
 
     # Compute gradients using 2D convolution
     Gx = convolve2d(image, maskA, mode='same')
@@ -69,19 +102,36 @@ def GLTP(image, **kwargs):
     img_gradient = cp.abs(Gx) + cp.abs(Gy)
 
     # Compute Local Ternary Pattern (LTeP) on gradient image
+    # Note: Assuming LTeP is already optimized with its own kernel
     _, imgDesc = LTeP(img_gradient, t=options.get('t', 10))
     options['binVec'] = [cp.arange(256) for _ in range(2)]
 
     # If DGLP flag is set, include directional gradient pattern
     if options['DGLP'] == 1:
         r, c = Gx.shape
-        img_angle = cp.arctan2(Gy, Gx + EPSILON)
-        img_angle = cp.degrees(img_angle)
-        img_angle = cp.where(Gx < 0, img_angle + 180, img_angle)
-        img_angle = cp.where((Gx >= 0) & (Gy < 0), img_angle + 360, img_angle)
-        img_angle = img_angle[1:r - 1, 1:c - 1]
-        img_angle = cp.floor(img_angle / 22.5).astype(int)
+        img_angle = cp.zeros((r - 2, c - 2), dtype=cp.float32)
 
+        # Launch DGLP kernel
+        # Get the current CUDA device
+        device = cp.cuda.Device()
+        # Get the maximum threads per block for the device
+        max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+        # Calculate the optimal block size (using a square block for simplicity)
+        block_size = int(cp.sqrt(max_threads_per_block))
+        # Ensure block_size is a multiple of 16 for better memory alignment
+        block_size = (block_size // 16) * 16
+
+        # Calculate grid dimensions
+        threads_per_block = (block_size, block_size)
+        blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
+
+        dglp_kernel(
+            blocks_per_grid,
+            threads_per_block,
+            (Gx.ravel(), Gy.ravel(), img_angle.ravel(), r - 2, c - 2, EPSILON)
+        )
+
+        img_angle = img_angle.astype(cp.int32)
         imgDesc.append({'fea': img_angle})
         options['binVec'].append(cp.arange(16))
 

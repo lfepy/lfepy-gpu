@@ -5,6 +5,41 @@ from cupyx.scipy.signal import convolve2d
 from lfepy.Helper import get_mapping
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_mask_GDP
 
+# Define the CUDA kernel for GDP computation
+gdp_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void gdp_kernel(
+    const float* angles,
+    float* GDPdecimal,
+    const int* link,
+    const float t,
+    const int rSize,
+    const int cSize,
+    const int linkSize
+) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    int idy = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (idx < cSize && idy < rSize) {
+        float x_c = angles[(idy + 1) * (cSize + 2) + (idx + 1)];
+        float sum = 0.0f;
+
+        for (int n = 0; n < linkSize; n++) {
+            int corner_y = link[n * 2] - 1;
+            int corner_x = link[n * 2 + 1] - 1;
+            float x_i = angles[(idy + corner_y) * (cSize + 2) + (idx + corner_x)];
+            float diff = x_i - x_c;
+
+            if (diff <= t && diff >= -t) {
+                sum += powf(2.0f, 8.0f - n - 1.0f);
+            }
+        }
+
+        GDPdecimal[idy * cSize + idx] = sum;
+    }
+}
+''', 'gdp_kernel')
+
 
 def GDP(image, **kwargs):
     """
@@ -73,18 +108,40 @@ def GDP(image, **kwargs):
 
     x_c = angles[1:-1, 1:-1]
     rSize, cSize = x_c.shape
-    GDPdecimal = cp.zeros((rSize, cSize))
+    GDPdecimal = cp.zeros((rSize, cSize), dtype=cp.float32)
 
-    for n in range(link.shape[0]):
-        corner = link[n]
-        x_i = angles[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1]
-        GDPdecimal += ((x_i - x_c <= t) & (x_i - x_c >= -t)) * 2 ** (8 - n - 1)
+    # Prepare data for kernel
+    angles = cp.ascontiguousarray(angles, dtype=cp.float32)
+    link = cp.ascontiguousarray(link, dtype=cp.int32)
+    t = cp.float32(t)
+
+    # Get the current CUDA device
+    device = cp.cuda.Device()
+    # Get the maximum threads per block for the device
+    max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+    # Calculate the optimal block size (using a square block for simplicity)
+    block_size = int(cp.sqrt(max_threads_per_block))
+    # Ensure block_size is a multiple of 16 for better memory alignment
+    block_size = (block_size // 16) * 16
+
+    # Calculate grid dimensions
+    threads_per_block = (block_size, block_size)
+    blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
+
+    # Launch kernel
+    gdp_kernel(threads_per_block, blocks_per_grid, (
+        angles,
+        GDPdecimal,
+        link,
+        t,
+        rSize,
+        cSize,
+        link.shape[0]
+    ))
 
     if options['mask'] == 'prewitt':
         mapping = get_mapping(8, 'u2')
-        for r in range(GDPdecimal.shape[0]):
-            for c in range(GDPdecimal.shape[1]):
-                GDPdecimal[r, c] = mapping['table'][int(GDPdecimal[r, c])]
+        GDPdecimal = cp.array(mapping['table'])[GDPdecimal.astype(int)]
         binNum = mapping['num']
     else:
         binNum = 256

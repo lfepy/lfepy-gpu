@@ -15,7 +15,7 @@ def gauss(x, sigma):
     Example:
         >>> gauss(0, 1)
         0.3989422804014327
-        >>> gauss(np.array([0, 1, 2]), 1)
+        >>> gauss(cp.array([0, 1, 2]), 1)
         array([0.39894228, 0.24197072, 0.05399097])
     """
     # Compute the Gaussian function value

@@ -69,7 +69,7 @@ def MBC(image, **kwargs):
         radius = 3
         f1, h1f1, h2f1, A1, theta1, psi1 = monofilt(image, nscale, minWaveLength, mult, sigmaOnf, orientWrap)
         for v in range(nscale):
-            Tem_img = cp.array((A1[v] - cp.min(A1[v])) / (cp.max(A1[v]) - cp.min(A1[v])) * 255, dtype=cp.uint8)
+            Tem_img = cp.array((A1[v] - cp.min(A1[v])) / (cp.max(A1[v]) - cp.min(A1[v])) * 255, dtype=cp.uint8).astype(cp.float64)
             LBPHIST, _ = descriptor_LBP(Tem_img, radius, neigh, MAPPING, 'i')
             matrix2 = cp.zeros(h1f1[v].shape)
             matrix3 = cp.zeros(h2f1[v].shape)

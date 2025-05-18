@@ -62,8 +62,8 @@ def RDLBP_Image_SmallestRadiusOnly(imgCenSmooth, img, lbpRadius, lbpPoints, mapp
     # Apply mapping if it is defined
     if isinstance(mapping, dict):
         bins = mapping['num']
-        table = cp.array(mapping['table'], dtype=cp.int32)
-        result = table[result.astype(cp.uint32)]
+        # Vectorized mapping using NumPy indexing
+        result = mapping['table'][result.astype(cp.uint8)]
 
     # Return result as histogram or image depending on mode
     if mode in ['h', 'hist', 'nh']:

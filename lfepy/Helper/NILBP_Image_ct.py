@@ -51,10 +51,10 @@ def NILBP_Image_ct(img, lbpPoints, mapping, mode, lbpRadius):
     # Apply mapping if provided
     if isinstance(mapping, dict):
         bins = mapping['num']
-        table = cp.array(mapping['table'], dtype=cp.int32)
-        result = table[result.astype(cp.uint32)]
+        # Vectorized mapping using NumPy indexing
+        result = mapping['table'][result.astype(cp.uint8)]
 
-    # Compute the histogram or convert result to appropriate type
+        # Compute the histogram or convert result to appropriate type
     if mode in ['h', 'hist', 'nh']:
         result = cp.histogram(result, bins=cp.arange(bins + 1))[0]
         if mode == 'nh':

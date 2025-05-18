@@ -50,8 +50,7 @@ def LGTrP(image, **kwargs):
     gaborMag = cp.abs(gabor_filter(image, 8, 1))
     gaborTotal = gaborMag[:, :, 0, 0]
 
-    for o in range(1, 8):
-        gaborTotal += gaborMag[:, :, o, 0]
+    gaborTotal = cp.sum(gaborMag[:, :, :, 0], axis=2)
 
     imgDescGabor = gaborTotal / 8
     _, imgDesc = LTrP(imgDescGabor)

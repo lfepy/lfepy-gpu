@@ -3,6 +3,34 @@ warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.r
 import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
+# Define the raw kernel for computing neighbor intensities
+mbp_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_neighbor_intensities(
+    const double* image, double* intensities,
+    int rows, int cols, int img_cols
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= cols || y >= rows) return;
+
+    int linkList[8][2] = {
+        {2, 1}, {1, 1}, {1, 2}, {1, 3},
+        {2, 3}, {3, 3}, {3, 2}, {3, 1}
+    };
+
+    int idx = y * cols + x;
+
+    // Get all neighbors
+    for (int n = 0; n < 8; ++n) {
+        int y1 = y + linkList[n][0] - 1;
+        int x1 = x + linkList[n][1] - 1;
+        intensities[idx * 8 + n] = image[y1 * img_cols + x1];
+    }
+}
+''', 'compute_neighbor_intensities')
+
 
 def MBP(image, **kwargs):
     """
@@ -44,23 +72,45 @@ def MBP(image, **kwargs):
     options = validate_kwargs(**kwargs)
     options = validate_mode(options)
 
+    # Convert image to CuPy array and ensure float64
+    image = cp.asarray(image, dtype=cp.float64)
+
     # Initialize variables
     rSize = image.shape[0] - 2
     cSize = image.shape[1] - 2
+    intensities = cp.zeros((rSize * cSize, 8), dtype=cp.float64)
 
-    # Define link list for MBP computation
-    link = cp.array([[2, 1], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1]], dtype=cp.int32)
-    ImgIntensity = cp.zeros((rSize * cSize, link.shape[0]), dtype=cp.float64)
+    # Launch kernel
+    # Get the current CUDA device
+    device = cp.cuda.Device()
+    # Get the maximum threads per block for the device
+    max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+    # Calculate the optimal block size (using a square block for simplicity)
+    block_size = int(cp.sqrt(max_threads_per_block))
+    # Ensure block_size is a multiple of 16 for better memory alignment
+    block_size = (block_size // 16) * 16
 
-    # Compute MBP descriptors
-    for n in range(link.shape[0]):
-        corner = link[n, :]
-        x_slice = image[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1]
-        ImgIntensity[:, n] = x_slice.reshape(-1)
+    # Calculate grid dimensions
+    threads_per_block = (block_size, block_size)
+    blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
 
-    medianMat = cp.median(ImgIntensity, axis=1)
-    MBP = (ImgIntensity > medianMat.reshape(-1, 1))
+    mbp_kernel(
+        blocks_per_grid,
+        threads_per_block,
+        (
+            image.ravel(),
+            intensities.ravel(),
+            rSize,
+            cSize,
+            image.shape[1]
+        )
+    )
 
+    # Compute median and create binary pattern
+    medianMat = cp.median(intensities, axis=1)
+    MBP = (intensities > medianMat.reshape(-1, 1))
+
+    # Create pattern using matrix multiplication
     imgDesc = cp.dot(MBP.astype(cp.uint8), 1 << cp.arange(MBP.shape[1] - 1, -1, -1)).reshape(rSize, cSize)
 
     # Set bin vectors
@@ -68,7 +118,7 @@ def MBP(image, **kwargs):
 
     # Compute MBP histogram
     MBP_hist = cp.zeros(len(options['binVec']))
-    MBP_hist = cp.bincount(cp.searchsorted(options['binVec'], cp.ravel(imgDesc)), minlength=len(options['binVec']))
+    MBP_hist = cp.bincount(cp.ravel(imgDesc), minlength=len(options['binVec']))
 
     if 'mode' in options and options['mode'] == 'nh':
         MBP_hist = MBP_hist / cp.sum(MBP_hist)

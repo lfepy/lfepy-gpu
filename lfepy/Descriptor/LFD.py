@@ -5,6 +5,49 @@ from lfepy.Helper import descriptor_LBP, descriptor_LPQ
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
 
+# Define the raw kernel for pattern computation
+pattern_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_pattern(
+    const unsigned char* quadrantMat,
+    unsigned char* pattern,
+    const int height,
+    const int width,
+    const int rSize,
+    const int cSize
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+    
+    if (x >= width || y >= height) return;
+    
+    // Define the 8 neighbors
+    const int link[8][2] = {
+        {1, 1}, {1, 2}, {1, 3},
+        {2, 3}, {3, 3}, {3, 2},
+        {3, 1}, {2, 1}
+    };
+    
+    // Get center pixel value
+    unsigned char x_c = quadrantMat[(y + 1) * (width + 2) + (x + 1)];
+    unsigned char pattern_val = 0;
+    
+    // Process each neighbor
+    for (int n = 0; n < 8; n++) {
+        int i = link[n][0];
+        int j = link[n][1];
+        unsigned char x_i = quadrantMat[(y + i - 1) * (width + 2) + (x + j - 1)];
+        
+        if (x_c == x_i) {
+            pattern_val += (1 << (7 - n));  // 2^(7-n) using bit shift
+        }
+    }
+    
+    pattern[y * width + x] = pattern_val;
+}
+''', 'compute_pattern')
+
+
 def LFD(image, **kwargs):
     """
     Compute Local Frequency Descriptor (LFD) histograms and descriptors from an input image.
@@ -59,13 +102,30 @@ def LFD(image, **kwargs):
     quadrantMat[(CoorX == 1) & (CoorY == -1)] = 4
 
     rSize, cSize = quadrantMat.shape[0] - 2, quadrantMat.shape[1] - 2
-    link = [(1, 1), (1, 2), (1, 3), (2, 3), (3, 3), (3, 2), (3, 1), (2, 1)]
     x_c = quadrantMat[1:-1, 1:-1]
     pattern = cp.zeros_like(x_c, dtype=cp.uint8)
 
-    for n, (i, j) in enumerate(link):
-        x_i = quadrantMat[i - 1:i + rSize - 1, j - 1:j + cSize - 1]
-        pattern += (x_c == x_i).astype(cp.uint8) * (2 ** (len(link) - n - 1))
+    # Get the current CUDA device
+    device = cp.cuda.Device()
+    # Get the maximum threads per block for the device
+    max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+    # Calculate the optimal block size (using a square block for simplicity)
+    block_size = int(cp.sqrt(max_threads_per_block))
+    # Ensure block_size is a multiple of 16 for better memory alignment
+    block_size = (block_size // 16) * 16
+
+    # Calculate grid dimensions
+    threads_per_block = (block_size, block_size)
+    blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
+
+    pattern_kernel(blocks_per_grid, threads_per_block, (
+        quadrantMat,
+        pattern,
+        rSize,
+        cSize,
+        rSize,
+        cSize
+    ))
 
     imgDesc.append({'fea': pattern.astype(cp.float64)})
 

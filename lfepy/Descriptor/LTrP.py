@@ -3,6 +3,54 @@ warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.r
 import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
+# Define the raw kernel for computing LTrP pattern
+ltrp_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_ltrp_pattern(
+    const double* image, double* pattern,
+    int rows, int cols, int img_cols
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= cols || y >= rows) return;
+
+    int linkList[8][4] = {
+        {4, 4, 5, 5},
+        {4, 3, 5, 3},
+        {4, 2, 5, 1},
+        {3, 2, 3, 1},
+        {2, 2, 1, 1},
+        {2, 3, 1, 3},
+        {2, 4, 1, 5},
+        {3, 4, 3, 5}
+    };
+
+    int idx = y * cols + x;
+    double center_val = image[(y + 2) * img_cols + (x + 2)];
+    double pattern_val = 0.0;
+
+    for (int n = 0; n < 8; ++n) {
+        int y1 = y + linkList[n][0] - 1;
+        int x1 = x + linkList[n][1] - 1;
+        int y2 = y + linkList[n][2] - 1;
+        int x2 = x + linkList[n][3] - 1;
+
+        double val1 = image[y1 * img_cols + x1];
+        double val2 = image[y2 * img_cols + x2];
+
+        bool diff1 = (val1 - center_val) >= 0;
+        bool diff2 = (val2 - center_val) >= 0;
+
+        if (diff1 != diff2) {
+            pattern_val += (1 << (7 - n));
+        }
+    }
+
+    pattern[idx] = pattern_val;
+}
+''', 'compute_ltrp_pattern')
+
 
 def LTrP(image, **kwargs):
     """
@@ -49,21 +97,41 @@ def LTrP(image, **kwargs):
     options = validate_kwargs(**kwargs)
     options = validate_mode(options)
 
-    # Define link list for LTrP computation
-    link_list = [[[4, 4], [5, 5]], [[4, 3], [5, 3]], [[4, 2], [5, 1]], [[3, 2], [3, 1]],
-                 [[2, 2], [1, 1]], [[2, 3], [1, 3]], [[2, 4], [1, 5]], [[3, 4], [3, 5]]]
+    # Convert image to CuPy array and ensure float64
+    image = cp.asarray(image, dtype=cp.float64)
 
     # Initialize variables
     x_c = image[2:-2, 2:-2]
     rSize, cSize = x_c.shape
-    imgDesc = cp.zeros_like(x_c)  # Use CuPy for GPU array
+    pattern = cp.zeros((rSize, cSize), dtype=cp.float64)
 
-    # Compute LTrP descriptors
-    for n, corners in enumerate(link_list):
-        corner1, corner2 = corners
-        x_p1 = image[corner1[0] - 1:corner1[0] + rSize - 1, corner1[1] - 1:corner1[1] + cSize - 1]
-        x_p2 = image[corner2[0] - 1:corner2[0] + rSize - 1, corner2[1] - 1:corner2[1] + cSize - 1]
-        imgDesc += cp.logical_xor((x_p1 - x_c) >= 0, (x_p2 - x_c) >= 0) * 2 ** (len(link_list) - n - 1)
+    # Launch kernel
+    # Get the current CUDA device
+    device = cp.cuda.Device()
+    # Get the maximum threads per block for the device
+    max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+    # Calculate the optimal block size (using a square block for simplicity)
+    block_size = int(cp.sqrt(max_threads_per_block))
+    # Ensure block_size is a multiple of 16 for better memory alignment
+    block_size = (block_size // 16) * 16
+
+    # Calculate grid dimensions
+    threads_per_block = (block_size, block_size)
+    blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
+
+    ltrp_kernel(
+        blocks_per_grid,
+        threads_per_block,
+        (
+            image.ravel(),
+            pattern.ravel(),
+            rSize,
+            cSize,
+            image.shape[1]
+        )
+    )
+
+    imgDesc = pattern.astype(cp.uint8)
 
     # Set bin vectors
     options['binVec'] = cp.arange(256)

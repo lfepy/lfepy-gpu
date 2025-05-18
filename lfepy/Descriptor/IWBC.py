@@ -3,6 +3,83 @@ warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.r
 import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
+# Define the raw kernel for computing IWBC pattern
+iwbc_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_iwbc_pattern(
+    const double* image,
+    double* DEx,
+    double* DEy,
+    const int* link,
+    int rows,
+    int cols,
+    int scale,
+    int numNeigh,
+    double ANGLE,
+    double ANGLEDiff
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= cols || y >= rows) return;
+
+    int idx = y * cols + x;
+    double x_c = image[(y + scale) * (cols + 2 * scale) + (x + scale)];
+    double angle = ANGLE;
+
+    for (int n = 0; n < numNeigh; n++) {
+        int y_pos = y + link[n * 2] - 1;
+        int x_pos = x + link[n * 2 + 1] - 1;
+        double x_i = image[y_pos * (cols + 2 * scale) + x_pos];
+        DEx[idx] += (x_i - x_c) * cos(angle);
+        DEy[idx] += (x_i - x_c) * sin(angle);
+        angle -= ANGLEDiff;
+    }
+}
+''', 'compute_iwbc_pattern')
+
+# Define the raw kernel for computing LBMP and LXOP
+pattern_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_pattern(
+    const double* input,
+    double* output,
+    const int* link,
+    int rows,
+    int cols,
+    int scale,
+    int numNeigh,
+    int is_magnitude
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= cols || y >= rows) return;
+
+    int idx = y * cols + x;
+    double x_c = input[(y + scale) * (cols + 2 * scale) + (x + scale)];
+    double pattern = 0.0;
+
+    for (int i = 0; i < numNeigh; i++) {
+        int y_pos = y + link[i * 2] - 1;
+        int x_pos = x + link[i * 2 + 1] - 1;
+        double x_i = input[y_pos * (cols + 2 * scale) + x_pos];
+
+        if (is_magnitude) {
+            double diff = x_i - x_c;
+            if (diff >= 0.0) {
+                pattern += exp2(static_cast<double>(numNeigh - i - 1));
+            }
+        } else {
+            if (x_i != x_c) {
+                pattern += exp2(static_cast<double>(numNeigh - i - 1));
+            }
+        }
+    }
+    output[idx] = pattern;
+}
+''', 'compute_pattern')
+
 
 def IWBC(image, **kwargs):
     """
@@ -70,12 +147,21 @@ def IWBC(image, **kwargs):
     DEx = cp.zeros((rSize, cSize))
     DEy = cp.zeros((rSize, cSize))
     link = scaleCell[scale]
-    for n in range(numNeigh):
-        corner = link[n]
-        x_i = image[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1]
-        DEx += (x_i - x_c) * cp.cos(ANGLE)
-        DEy += (x_i - x_c) * cp.sin(ANGLE)
-        ANGLE -= ANGLEDiff
+
+    # Get the current CUDA device
+    device = cp.cuda.Device()
+    # Get the maximum threads per block for the device
+    max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+    # Calculate the optimal block size (using a square block for simplicity)
+    block_size = int(cp.sqrt(max_threads_per_block))
+    # Ensure block_size is a multiple of 16 for better memory alignment
+    block_size = (block_size // 16) * 16
+
+    # Calculate grid dimensions
+    threads_per_block = (block_size, block_size)
+    blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
+
+    iwbc_kernel(blocks_per_grid, threads_per_block, (image, DEx, DEy, link, rSize, cSize, scale, numNeigh, ANGLE, ANGLEDiff))
 
     # Compute EPSx and EPSy
     EPSx = cp.arctan((ALPHA * DEx) / (x_c + BELTA))
@@ -109,13 +195,9 @@ def IWBC(image, **kwargs):
     x_c = NWM[scale2:-scale2, scale2:-scale2]
     rSize, cSize = x_c.shape
     LBMP = cp.zeros((rSize, cSize))
-    for i in range(numNeigh):
-        corner = link[i]
-        x_i = NWM[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1]
-        diff = x_i - x_c
-        diff[(diff == 0) | (diff > 0)] = 1
-        diff[diff < 0] = 0
-        LBMP += diff * 2 ** (numNeigh - i - 1)
+
+    # Launch kernel for LBMP computation
+    pattern_kernel(blocks_per_grid, threads_per_block, (NWM, LBMP, link, rSize, cSize, scale2, numNeigh, 1))
 
     # Compute IWBC_M (Magnitude Component of Improved Weber Contrast)
     IWBC_M = LBMP + B_y[scale2:-scale2, scale2:-scale2] * 2 ** numNeigh
@@ -130,11 +212,9 @@ def IWBC(image, **kwargs):
     # Convert NWO to discrete orientation bins
     x_c = NWO[scale2:-scale2, scale2:-scale2]
     LXOP = cp.zeros((rSize, cSize))
-    for i in range(numNeigh):
-        corner = link[i]
-        x_i = NWO[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1]
-        diff = ~(x_i == x_c)
-        LXOP += diff * 2 ** (numNeigh - i - 1)
+
+    # Launch kernel for LXOP computation
+    pattern_kernel(blocks_per_grid, threads_per_block, (NWO, LXOP, link, rSize, cSize, scale2, numNeigh, 0))
 
     IWBC_O = LXOP + B_y[scale2:-scale2, scale2:-scale2] * 2 ** numNeigh
     IWBC_O += B_x[scale2:-scale2, scale2:-scale2] * 2 ** (numNeigh + 1)
@@ -154,7 +234,7 @@ def IWBC(image, **kwargs):
         hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
         IWBC_hist.extend(hist)
     IWBC_hist = cp.array(IWBC_hist)
-    
+
     if 'mode' in options and options['mode'] == 'nh':
         IWBC_hist = IWBC_hist / cp.sum(IWBC_hist)
 

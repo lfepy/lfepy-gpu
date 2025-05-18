@@ -65,9 +65,10 @@ def LDiP(image, **kwargs):
     bit8array = cp.zeros((image.shape[0], image.shape[1], 8))
     bit8array[cp.logical_or(cp.logical_or(ind == 0, ind == 1), ind == 2)] = 1
     imgDesc = cp.zeros_like(image)
-    for r in range(image.shape[0]):
-        codebit = cp.reshape(bit8array[r, :, 7::-1], (image.shape[1], -1))
-        imgDesc[r, :] = cp.packbits(codebit.astype(bool)).flatten()
+
+    # Vectorized bit packing
+    codebit = cp.reshape(bit8array[:, :, 7::-1], (image.shape[0], image.shape[1], -1))
+    imgDesc = cp.packbits(codebit.astype(bool)).reshape(image.shape)
 
     # Define unique bins for histogram
     uniqueBin = cp.array([7, 11, 13, 14, 19, 21, 22, 25, 26, 28, 35, 37, 38, 41, 42, 44, 49, 50, 52, 56, 67, 69,

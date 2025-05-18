@@ -82,7 +82,7 @@ def descriptor_LPQ(image, winSize=3, decorr=1, freqestim=1, mode='im'):
 
     # Run filters to compute the frequency response in the four points. Store real and imaginary parts separately
     filterResp = convolve2d(convolve2d(image, w0[:, cp.newaxis], mode=convmode), w1[cp.newaxis, :], mode=convmode)
-    freqResp = cp.zeros((filterResp.shape[0], filterResp.shape[1], 8), dtype=cp.complex128)
+    freqResp = cp.zeros((filterResp.shape[0], filterResp.shape[1], 8))
     freqResp[:, :, 0] = cp.real(filterResp)
     freqResp[:, :, 1] = cp.imag(filterResp)
     filterResp = convolve2d(convolve2d(image, w1[:, cp.newaxis], mode=convmode), w0[cp.newaxis, :], mode=convmode)

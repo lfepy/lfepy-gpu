@@ -62,13 +62,10 @@ def LGDiP(image, **kwargs):
     for scale in range(5):
         ind = cp.argsort(gaborMag[:, :, :, scale], axis=2)[:, :, ::-1]
         bit8array = cp.zeros((ro, co, 8), dtype=cp.int32)
-
         bit8array[cp.isin(ind, cp.array([1, 2, 3]))] = 1
-        codeImg = cp.zeros((ro, co), dtype=cp.uint8)
-
-        for r in range(ro):
-            codebit = cp.flip(bit8array[r, :, :], axis=1).reshape(co, -1)
-            codeImg[r, :] = cp.packbits(codebit.astype(cp.uint8)).reshape(-1)
+        # Vectorized version of the nested loop
+        codebit = cp.flip(bit8array, axis=2).reshape(ro, co, -1)
+        codeImg = cp.packbits(codebit.astype(cp.uint8)).reshape(ro, co)
 
         imgDesc.append({'fea': codeImg})
         options['binVec'].append(uniqueBin)

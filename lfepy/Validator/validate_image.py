@@ -8,7 +8,7 @@ def validate_image(image):
         raise TypeError("The image must be a valid numpy.ndarray or cupy.ndarray.")
 
     if image.dtype != cp.ndarray:
-        image = cp.array(image)
+        image = cp.asarray(image)
 
     # Convert the input image to double precision if needed
     if image.dtype != cp.float64:
@@ -17,7 +17,6 @@ def validate_image(image):
     # Convert to grayscale if needed
     if len(image.shape) == 3:
         # Convert the weights list to a CuPy array
-        weights = cp.array([0.2989, 0.5870, 0.1140])
-        image = cp.dot(image[..., :3], weights)
+        image = cp.dot(image[..., :3], cp.array([0.2989, 0.5870, 0.1140])).astype(cp.uint8)
 
-    return image
+    return image.astype(cp.float64)

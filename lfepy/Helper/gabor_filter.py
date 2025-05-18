@@ -6,6 +6,7 @@ from lfepy.Helper.filter_image_with_Gabor_bank import filter_image_with_Gabor_ba
 def gabor_filter(image, orienNum, scaleNum):
     """
     Apply a Gabor filter bank to an image and organize the results into a multidimensional array.
+    This version uses vectorized operations for better performance.
 
     Args:
         image (cp.ndarray): Input image to be filtered. Should be a 2D CuPy array.
@@ -33,17 +34,17 @@ def gabor_filter(image, orienNum, scaleNum):
     # Calculate number of pixels in each filter response
     pixel_num = len(result) // (orienNum * scaleNum)
 
+    # Reshape result to (orienNum * scaleNum, r, c)
+    reshaped_result = result.reshape(orienNum * scaleNum, r, c)
+
+    # Create orientation and scale indices
+    orien_indices = cp.arange(orienNum * scaleNum) % orienNum
+    scale_indices = cp.arange(orienNum * scaleNum) // orienNum
+
     # Initialize the output array
     gaborMag = cp.zeros((r, c, orienNum, scaleNum))
 
-    # Organize the results into the output array
-    orien = 0
-    scale = 1
-    for m in range(1, orienNum * scaleNum + 1):
-        orien += 1
-        if orien > orienNum:
-            orien = 1
-            scale += 1
-        gaborMag[:, :, orien - 1, scale - 1] = result[(m - 1) * pixel_num: m * pixel_num].reshape(r, c)
+    # Use advanced indexing to assign values
+    gaborMag[:, :, orien_indices, scale_indices] = reshaped_result.transpose(1, 2, 0)
 
     return gaborMag

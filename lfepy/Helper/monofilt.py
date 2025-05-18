@@ -1,5 +1,43 @@
 import cupy as cp
 
+# Raw kernel for phase angle calculations
+_phase_kernel = cp.RawKernel(r'''
+#define M_PI 3.14159265358979323846f
+
+extern "C" __global__
+void compute_phase_angles(
+    const float* f_spatial, const float* h1f_spatial, const float* h2f_spatial,
+    float* theta, float* psi, int orientWrap, int nscale, int size
+) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= size) return;
+
+    for (int s = 0; s < nscale; s++) {
+        int scale_offset = s * size;
+        float h1 = h1f_spatial[scale_offset + idx];
+        float h2 = h2f_spatial[scale_offset + idx];
+        float f = f_spatial[scale_offset + idx];
+
+        // Compute theta (orientation)
+        theta[scale_offset + idx] = atan2f(h2, h1);
+
+        // Compute psi (phase)
+        float h_mag = sqrtf(h1 * h1 + h2 * h2);
+        psi[scale_offset + idx] = atan2f(f, h_mag);
+
+        if (orientWrap) {
+            if (theta[scale_offset + idx] < 0) {
+                theta[scale_offset + idx] += M_PI;
+                psi[scale_offset + idx] = M_PI - psi[scale_offset + idx];
+            }
+            if (psi[scale_offset + idx] > M_PI) {
+                psi[scale_offset + idx] -= 2 * M_PI;
+            }
+        }
+    }
+}
+''', 'compute_phase_angles')
+
 
 def monofilt(im, nscale, minWaveLength, mult, sigmaOnf, orientWrap=0, thetaPhase=1):
     """
@@ -45,76 +83,81 @@ def monofilt(im, nscale, minWaveLength, mult, sigmaOnf, orientWrap=0, thetaPhase
     else:
         raise ValueError("Input image must be 2D.")
 
-        # Compute the 2D Fourier Transform of the image
+    # Compute the 2D Fourier Transform of the image
     IM = cp.fft.fft2(im)
 
-    # Generate frequency coordinates
-    u1, u2 = cp.meshgrid(
-        (cp.arange(cols) - (cols // 2 + 1)) / (cols - cols % 2),
-        (cp.arange(rows) - (rows // 2 + 1)) / (rows - rows % 2)
-    )
+    # Generate frequency coordinates using array operations
+    u1 = cp.fft.ifftshift((cp.arange(cols) - (cols // 2 + 1)) / (cols - cols % 2))
+    u2 = cp.fft.ifftshift((cp.arange(rows) - (rows // 2 + 1)) / (rows - rows % 2))
+    u1, u2 = cp.meshgrid(u1, u2)
 
-    # Shift the frequency coordinates
-    u1 = cp.fft.ifftshift(u1)
-    u2 = cp.fft.ifftshift(u2)
-
-    # Compute the radius in the frequency domain
+    # Compute radius using array operations
     radius = cp.sqrt(u1 ** 2 + u2 ** 2)
-    radius[1, 1] = 1  # Avoid division by zero at the origin
+    radius[1, 1] = 1  # Avoid division by zero
 
     # Initialize filter responses
     H1 = 1j * u1 / radius
     H2 = 1j * u2 / radius
 
-    # Initialize empty lists to store filter responses
-    f = cp.empty((0, rows, cols), dtype=cp.float32)
-    h1f = cp.empty((0, rows, cols), dtype=cp.float32)
-    h2f = cp.empty((0, rows, cols), dtype=cp.float32)
-    A = cp.empty((0, rows, cols), dtype=cp.float32)
-    theta = cp.empty((0, rows, cols), dtype=cp.float32) if thetaPhase else None
-    psi = cp.empty((0, rows, cols), dtype=cp.float32) if thetaPhase else None
+    # Pre-allocate arrays for all scales
+    f = cp.zeros((nscale, rows, cols), dtype=cp.float32)
+    h1f = cp.zeros((nscale, rows, cols), dtype=cp.float32)
+    h2f = cp.zeros((nscale, rows, cols), dtype=cp.float32)
+    A = cp.zeros((nscale, rows, cols), dtype=cp.float32)
 
-    for s in range(1, nscale + 1):
-        # Calculate wavelength and filter frequency
-        wavelength = minWaveLength * mult ** (s - 1)
-        fo = 1.0 / wavelength
+    if thetaPhase:
+        theta = cp.zeros((nscale, rows, cols), dtype=cp.float32)
+        psi = cp.zeros((nscale, rows, cols), dtype=cp.float32)
 
-        # Create Log-Gabor filter
-        logGabor = cp.exp(-((cp.log(radius / fo)) ** 2) / (2 * cp.log(sigmaOnf) ** 2))
-        logGabor[0, 0] = 0  # Avoid division by zero at the origin
+    # Compute wavelengths and frequencies for all scales at once
+    wavelengths = minWaveLength * (mult ** cp.arange(nscale))
+    fo = 1.0 / wavelengths
 
-        # Apply filter in frequency domain
-        H1s = H1 * logGabor
-        H2s = H2 * logGabor
+    # Reshape for broadcasting
+    radius_3d = radius[cp.newaxis, :, :]
+    fo_3d = fo[:, cp.newaxis, cp.newaxis]
+    H1_3d = H1[cp.newaxis, :, :]
+    H2_3d = H2[cp.newaxis, :, :]
+    IM_3d = IM[cp.newaxis, :, :]
 
-        # Convert back to spatial domain
-        f_spatial = cp.real(cp.fft.ifft2(IM * logGabor))
-        h1f_spatial = cp.real(cp.fft.ifft2(IM * H1s))
-        h2f_spatial = cp.real(cp.fft.ifft2(IM * H2s))
+    # Create Log-Gabor filters for all scales at once
+    logGabor = cp.exp(-((cp.log(radius_3d / fo_3d)) ** 2) / (2 * cp.log(sigmaOnf) ** 2))
+    logGabor[:, 0, 0] = 0
 
-        # Compute amplitude
-        A_s = cp.sqrt(f_spatial ** 2 + h1f_spatial ** 2 + h2f_spatial ** 2)
+    # Apply filters in frequency domain for all scales
+    H1s = H1_3d * logGabor
+    H2s = H2_3d * logGabor
 
-        # Concatenate the results into cupy arrays
-        f = cp.concatenate((f, f_spatial[cp.newaxis, ...]), axis=0)
-        h1f = cp.concatenate((h1f, h1f_spatial[cp.newaxis, ...]), axis=0)
-        h2f = cp.concatenate((h2f, h2f_spatial[cp.newaxis, ...]), axis=0)
-        A = cp.concatenate((A, A_s[cp.newaxis, ...]), axis=0)
+    # Convert back to spatial domain for all scales
+    f = cp.real(cp.fft.ifft2(IM_3d * logGabor, axes=(1, 2)))
+    h1f = cp.real(cp.fft.ifft2(IM_3d * H1s, axes=(1, 2)))
+    h2f = cp.real(cp.fft.ifft2(IM_3d * H2s, axes=(1, 2)))
 
-        if thetaPhase:
-            # Compute phase angles
-            theta_s = cp.arctan2(h2f_spatial, h1f_spatial)
-            psi_s = cp.arctan2(f_spatial, cp.sqrt(h1f_spatial ** 2 + h2f_spatial ** 2))
+    # Compute amplitude for all scales
+    A = cp.sqrt(f ** 2 + h1f ** 2 + h2f ** 2)
 
-            if orientWrap:
-                # Wrap orientations to [0, π] range
-                theta_s[theta_s < 0] += cp.pi
-                psi_s[theta_s < 0] = cp.pi - psi_s[theta_s < 0]
-                psi_s[psi_s > cp.pi] -= 2 * cp.pi
+    if thetaPhase:
+        # Compute phase angles using raw kernel for all scales at once
+        size = rows * cols
+        # Get the current CUDA device
+        device = cp.cuda.Device()
+        # Get the maximum threads per block for the device
+        max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+        # Calculate the optimal block size (using a square block for simplicity)
+        block_size = int(cp.sqrt(max_threads_per_block))
+        # Ensure block_size is a multiple of 16 for better memory alignment
+        block_size = (block_size // 16) * 16
 
-            # Concatenate phase results
-            theta = cp.concatenate((theta, theta_s[cp.newaxis, ...]), axis=0)
-            psi = cp.concatenate((psi, psi_s[cp.newaxis, ...]), axis=0)
+        # Calculate grid dimensions
+        threads_per_block = (block_size, block_size)
+        blocks_per_grid = ((cols + block_size - 1) // block_size, (rows + block_size - 1) // block_size)
+
+        _phase_kernel(
+            blocks_per_grid, threads_per_block,
+            (f.ravel(), h1f.ravel(), h2f.ravel(),
+             theta.ravel(), psi.ravel(),
+             orientWrap, nscale, size)
+        )
 
     if thetaPhase:
         return f, h1f, h2f, A, theta, psi

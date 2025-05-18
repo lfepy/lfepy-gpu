@@ -1,5 +1,4 @@
 import cupy as cp
-import numpy as np
 
 
 def construct_Gabor_filters(num_of_orient, num_of_scales, size1, fmax=0.25,
@@ -27,14 +26,6 @@ def construct_Gabor_filters(num_of_orient, num_of_scales, size1, fmax=0.25,
     Raises:
         ValueError: If 'size1' is neither an integer nor a tuple of length 2.
     """
-    # Initialize the filter bank
-    filter_bank = {
-        'spatial': np.empty((num_of_scales, num_of_orient), dtype=object),
-        'freq': np.empty((num_of_scales, num_of_orient), dtype=object),
-        'scales': num_of_scales,
-        'orient': num_of_orient
-    }
-
     # Check and adjust the size input
     if isinstance(size1, int):
         size1 = (size1, size1)
@@ -49,24 +40,52 @@ def construct_Gabor_filters(num_of_orient, num_of_scales, size1, fmax=0.25,
     # Create meshgrid for x and y coordinates
     X, Y = cp.meshgrid(cp.arange(-sigma_x, sigma_x), cp.arange(-sigma_y, sigma_y))
 
-    # Vectorize the filter creation
-    for u in range(num_of_scales):  # for each scale
-        fu = fmax / (separation ** u)
-        alfa = fu / gamma
-        beta = fu / ni
+    # Create arrays for scales and orientations
+    scales = cp.arange(num_of_scales)
+    orientations = cp.arange(num_of_orient)
 
-        for v in range(num_of_orient):  # for each orientation
-            theta_v = (v / num_of_orient) * cp.pi
+    # Calculate frequencies for all scales
+    frequencies = fmax / (separation ** scales)
 
-            # Rotate coordinates using the orientation angle
-            X_rot = X * cp.cos(theta_v) + Y * cp.sin(theta_v)
-            Y_rot = -X * cp.sin(theta_v) + Y * cp.cos(theta_v)
+    # Calculate alpha and beta for all scales
+    alphas = frequencies / gamma
+    betas = frequencies / ni
 
-            # Compute the Gabor filter using vectorized operations
-            gabor = (fu**2 / (cp.pi * gamma * ni)) * cp.exp(-(alfa**2 * X_rot**2 + beta**2 * Y_rot**2)) * cp.exp(1j * 2 * cp.pi * fu * X_rot)
+    # Calculate orientation angles for all orientations
+    thetas = (orientations / num_of_orient) * cp.pi
 
-            # Ensure the filter size matches the expected size
-            filter_bank['spatial'][u, v] = gabor
-            filter_bank['freq'][u, v] = cp.fft.fft2(gabor)
+    # Reshape X and Y for broadcasting with orientations
+    X = X[None, None, :, :]  # Shape: (1, 1, height, width)
+    Y = Y[None, None, :, :]  # Shape: (1, 1, height, width)
+
+    # Reshape thetas for broadcasting
+    cos_theta = cp.cos(thetas)[None, :, None, None]  # Shape: (1, num_of_orient, 1, 1)
+    sin_theta = cp.sin(thetas)[None, :, None, None]  # Shape: (1, num_of_orient, 1, 1)
+
+    # Calculate rotated coordinates for all orientations at once using broadcasting
+    X_rot = X * cos_theta + Y * sin_theta  # Shape: (1, num_of_orient, height, width)
+    Y_rot = -X * sin_theta + Y * cos_theta  # Shape: (1, num_of_orient, height, width)
+
+    # Calculate Gabor filters for all scales and orientations
+    # Reshape arrays for broadcasting
+    alphas = alphas[:, None, None, None]
+    betas = betas[:, None, None, None]
+    frequencies = frequencies[:, None, None, None]
+
+    # Compute the Gabor filter using vectorized operations
+    gabor = ((frequencies ** 2 / (cp.pi * gamma * ni)) *
+             cp.exp(-(alphas ** 2 * X_rot ** 2 + betas ** 2 * Y_rot ** 2)) *
+             cp.exp(1j * 2 * cp.pi * frequencies * X_rot))
+
+    # Compute FFT for all filters at once
+    gabor_freq = cp.fft.fft2(gabor)
+
+    # Create filter bank with 4D arrays
+    filter_bank = {
+        'spatial': gabor,
+        'freq': gabor_freq,
+        'scales': num_of_scales,
+        'orient': num_of_orient
+    }
 
     return filter_bank

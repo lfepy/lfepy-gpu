@@ -21,7 +21,7 @@ def dgauss(x, sigma):
     Example:
         >>> dgauss(0, 1)
         -0.0
-        >>> dgauss(np.array([0, 1, 2]), 1)
+        >>> dgauss(cp.array([0, 1, 2]), 1)
         array([-0., -0.24197072, -0.10798193])
     """
     return -x * gauss(x, sigma) / sigma ** 2

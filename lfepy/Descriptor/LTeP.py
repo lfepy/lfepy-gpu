@@ -18,27 +18,6 @@ def LTeP(image, **kwargs):
         tuple: A tuple containing:
             LTeP_hist (cupy.ndarray): Histogram(s) of LTeP descriptors.
             imgDesc (list of dicts): List of dictionaries containing LTeP descriptors.
-
-    Raises:
-        TypeError: If `image` is not a valid `numpy.ndarray`.
-        ValueError: If `mode` in `kwargs` is not a valid option.
-
-    Example:
-        >>> import matplotlib.pyplot as plt
-        >>> from matplotlib.image import imread
-
-        >>> image = imread("Path")
-        >>> histogram, imgDesc = LTeP(image, mode='nh', t=2)
-
-        >>> plt.imshow(imgDesc[0]['fea'].get(), cmap='gray')
-        >>> plt.axis('off')
-        >>> plt.show()
-
-    References:
-        F. Bashar, A. Khan, F. Ahmed, and M.H. Kabir,
-        Robust Facial Expression Recognition Based on Median Ternary Pattern (MTP),
-        Electrical Information and Communication Technology (EICT), IEEE,
-        2014, pp. 1-5.
     """
     # Input data validation
     image = validate_image(image)
@@ -52,29 +31,40 @@ def LTeP(image, **kwargs):
 
     # Define link list for LTeP computation
     link = cp.array([[2, 1], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1]])
-    ImgIntensity = cp.zeros((rSize * cSize, 8))
 
-    # Compute LTeP descriptors
-    for n in range(link.shape[0]):
-        corner = link[n, :]
-        ImgIntensity[:, n] = image[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1].flatten()
-
+    # Get center matrix
     centerMat = image[1:-1, 1:-1].flatten()
 
-    Pltp = ImgIntensity > (centerMat[:, None] + t)
-    Nltp = ImgIntensity < (centerMat[:, None] - t)
+    # Create arrays for patch extraction
+    y_indices = cp.arange(rSize)[:, None, None] + link[None, :, 0] - 1
+    x_indices = cp.arange(cSize)[None, :, None] + link[None, None, :, 1] - 1
 
-    imgDesc = [{'fea': Pltp.dot(2 ** cp.arange(Pltp.shape[-1])).reshape(rSize, cSize)},
-               {'fea': Nltp.dot(2 ** cp.arange(Nltp.shape[-1])).reshape(rSize, cSize)}]
+    # Extract all patches at once using advanced indexing
+    patches = image[y_indices, x_indices]
+    ImgIntensity = patches.reshape(rSize * cSize, 8)
+
+    # Compute patterns using CuPy operations
+    Pltp = (ImgIntensity > (centerMat[:, None] + t)).astype(cp.float64)
+    Nltp = (ImgIntensity < (centerMat[:, None] - t)).astype(cp.float64)
+
+    # Compute binary patterns using vectorized operations
+    powers = 2 ** cp.arange(8)  # Pre-compute powers of 2
+    pos_pattern = cp.dot(Pltp, powers).reshape(rSize, cSize)
+    neg_pattern = cp.dot(Nltp, powers).reshape(rSize, cSize)
+
+    imgDesc = [
+        {'fea': pos_pattern},
+        {'fea': neg_pattern}
+    ]
 
     # Set bin vectors
     options['binVec'] = [cp.arange(256), cp.arange(256)]
 
-    # Compute LTeP histogram
+    # Compute LTeP histogram using vectorized operations
     LTeP_hist = []
     for s in range(len(imgDesc)):
-        imgReg = cp.array(imgDesc[s]['fea'])
-        binVec = cp.array(options['binVec'][s])
+        imgReg = imgDesc[s]['fea']
+        binVec = options['binVec'][s]
         # Vectorized counting for each bin value
         hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
         LTeP_hist.extend(hist)

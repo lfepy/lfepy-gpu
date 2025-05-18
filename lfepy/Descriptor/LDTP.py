@@ -4,6 +4,68 @@ import cupy as cp
 from cupyx.scipy.signal import convolve2d
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_epsi
 
+# Define the raw kernel for computing LDTP pattern
+ldtp_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_ldtp_pattern(
+    const double* image,
+    const int* prin1,
+    const int* prin2,
+    double* imgDesc,
+    int rows,
+    int cols,
+    int epsi
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= cols || y >= rows) return;
+
+    // Define link list for computing intensity differences
+    int linkList[8][2][2] = {
+        {{2, 3}, {2, 1}}, {{1, 3}, {3, 1}}, {{1, 2}, {3, 2}}, {{1, 1}, {3, 3}},
+        {{2, 1}, {2, 3}}, {{3, 1}, {1, 3}}, {{3, 2}, {1, 2}}, {{3, 3}, {1, 1}}
+    };
+
+    // Get principal directions
+    int p1 = prin1[y * cols + x];
+    int p2 = prin2[y * cols + x];
+
+    // Calculate intensity differences for principal directions
+    int y1_p1 = y + linkList[p1][0][0] - 1;
+    int x1_p1 = x + linkList[p1][0][1] - 1;
+    int y2_p1 = y + linkList[p1][1][0] - 1;
+    int x2_p1 = x + linkList[p1][1][1] - 1;
+    double diffResP = image[y1_p1 * (cols + 2) + x1_p1] - image[y2_p1 * (cols + 2) + x2_p1];
+
+    int y1_p2 = y + linkList[p2][0][0] - 1;
+    int x1_p2 = x + linkList[p2][0][1] - 1;
+    int y2_p2 = y + linkList[p2][1][0] - 1;
+    int x2_p2 = x + linkList[p2][1][1] - 1;
+    double diffResN = image[y1_p2 * (cols + 2) + x1_p2] - image[y2_p2 * (cols + 2) + x2_p2];
+
+    // Apply threshold for texture difference
+    if (diffResP <= epsi && diffResP >= -epsi) {
+        diffResP = 0.0;
+    } else if (diffResP < -epsi) {
+        diffResP = 1.0;
+    } else {
+        diffResP = 2.0;
+    }
+
+    if (diffResN <= epsi && diffResN >= -epsi) {
+        diffResN = 0.0;
+    } else if (diffResN < -epsi) {
+        diffResN = 1.0;
+    } else {
+        diffResN = 2.0;
+    }
+
+    // Generate LDTP descriptor
+    imgDesc[y * cols + x] = 16.0 * p1 + 4.0 * diffResP + diffResN;
+}
+''', 'compute_ldtp_pattern')
+
 
 def LDTP(image, **kwargs):
     """
@@ -66,45 +128,41 @@ def LDTP(image, **kwargs):
 
     # Sorting to get principal directions
     ind = cp.argsort(maskResponsesAbs[1:-1, 1:-1, :], axis=2)
-    prin1 = ind[:, :, 0]
-    prin2 = ind[:, :, 1]
+    prin1 = ind[:, :, 0].astype(cp.int32)
+    prin2 = ind[:, :, 1].astype(cp.int32)
 
-    # Define link list for computing intensity differences
-    linkList = [
-        [[2, 3], [2, 1]], [[1, 3], [3, 1]], [[1, 2], [3, 2]], [[1, 1], [3, 3]],
-        [[2, 1], [2, 3]], [[3, 1], [1, 3]], [[3, 2], [1, 2]], [[3, 3], [1, 1]]
-    ]
+    # Initialize output arrays
+    rSize = image.shape[0] - 2
+    cSize = image.shape[1] - 2
+    imgDesc = cp.zeros((rSize, cSize), dtype=cp.float64)
 
-    # Calculate intensity differences based on the link list
-    x_c = image[1:-1, 1:-1]
-    rSize, cSize = x_c.shape
-    diffIntensity = cp.zeros((rSize, cSize, 8))
+    # Launch kernel
+    # Get the current CUDA device
+    device = cp.cuda.Device()
+    # Get the maximum threads per block for the device
+    max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+    # Calculate the optimal block size (using a square block for simplicity)
+    block_size = int(cp.sqrt(max_threads_per_block))
+    # Ensure block_size is a multiple of 16 for better memory alignment
+    block_size = (block_size // 16) * 16
 
-    for n, link in enumerate(linkList):
-        corner1 = link[0]
-        corner2 = link[1]
-        x_1 = image[corner1[0] - 1:corner1[0] + rSize - 1, corner1[1] - 1:corner1[1] + cSize - 1]
-        x_2 = image[corner2[0] - 1:corner2[0] + rSize - 1, corner2[1] - 1:corner2[1] + cSize - 1]
-        diffIntensity[:, :, n] = x_1 - x_2
+    # Calculate grid dimensions
+    threads_per_block = (block_size, block_size)
+    blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
 
-    # Initialize difference result arrays
-    diffResP = cp.zeros((rSize, cSize))
-    diffResN = cp.zeros((rSize, cSize))
-    for d in range(8):
-        diffResIns = diffIntensity[:, :, d]
-        diffResP[prin1 == d] = diffResIns[prin1 == d]
-        diffResN[prin2 == d] = diffResIns[prin2 == d]
-
-    # Apply threshold for texture difference
-    diffResP[cp.logical_and(diffResP <= epsi, diffResP >= -epsi)] = 0
-    diffResP[diffResP < -epsi] = 1
-    diffResP[diffResP > epsi] = 2
-    diffResN[cp.logical_and(diffResN <= epsi, diffResN >= -epsi)] = 0
-    diffResN[diffResN < -epsi] = 1
-    diffResN[diffResN > epsi] = 2
-
-    # Generate LDTP descriptors
-    imgDesc = 16 * prin1 + 4 * diffResP + diffResN
+    ldtp_kernel(
+        blocks_per_grid,
+        threads_per_block,
+        (
+            image.ravel(),
+            prin1.ravel(),
+            prin2.ravel(),
+            imgDesc.ravel(),
+            rSize,
+            cSize,
+            epsi
+        )
+    )
 
     # Define unique bins for histogram
     uniqueBin = cp.array([0, 1, 2, 4, 5, 6, 8, 9, 10, 16, 17, 18, 20, 21, 22, 24, 25, 26, 32, 33,

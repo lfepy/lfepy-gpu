@@ -3,6 +3,72 @@ warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.r
 import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode, validate_t_MTP
 
+# Define the raw kernel for computing MTP pattern
+mtp_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_mtp_pattern(
+    const float* image, 
+    float* Pmtp_pattern,
+    float* Nmtp_pattern,
+    int rows, 
+    int cols,
+    float t
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= cols || y >= rows) return;
+
+    int link[8][2] = {
+        {2, 1}, {1, 1}, {1, 2}, {1, 3},
+        {2, 3}, {3, 3}, {3, 2}, {3, 1}
+    };
+
+    int idx = y * cols + x;
+    float intensities[8];
+    float median = 0.0;
+
+    // Load intensities from neighboring pixels
+    for (int n = 0; n < 8; ++n) {
+        int y_pos = y + link[n][0] - 1;
+        int x_pos = x + link[n][1] - 1;
+        intensities[n] = image[y_pos * (cols + 2) + x_pos];
+    }
+
+    // Compute median (simple sort for 8 elements)
+    for (int i = 0; i < 7; ++i) {
+        for (int j = 0; j < 7 - i; ++j) {
+            if (intensities[j] > intensities[j+1]) {
+                float temp = intensities[j];
+                intensities[j] = intensities[j+1];
+                intensities[j+1] = temp;
+            }
+        }
+    }
+    median = (intensities[3] + intensities[4]) / 2.0;
+
+    // Compute Pmtp and Nmtp patterns
+    unsigned char Pmtp_val = 0;
+    unsigned char Nmtp_val = 0;
+
+    for (int n = 0; n < 8; ++n) {
+        int y_pos = y + link[n][0] - 1;
+        int x_pos = x + link[n][1] - 1;
+        float val = image[y_pos * (cols + 2) + x_pos];
+
+        if (val > (median + t)) {
+            Pmtp_val |= (1 << (7 - n));
+        }
+        if (val < (median - t)) {
+            Nmtp_val |= (1 << (7 - n));
+        }
+    }
+
+    Pmtp_pattern[idx] = Pmtp_val;
+    Nmtp_pattern[idx] = Nmtp_val;
+}
+''', 'compute_mtp_pattern')
+
 
 def MTP(image, **kwargs):
     """
@@ -50,24 +116,43 @@ def MTP(image, **kwargs):
     rSize = image.shape[0] - 2
     cSize = image.shape[1] - 2
 
-    # Define link list for MTP computation
-    link = cp.array([[2, 1], [1, 1], [1, 2], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1]], dtype=cp.int32)
-    ImgIntensity = cp.zeros((rSize * cSize, link.shape[0]), dtype=cp.float64)
+    # Ensure image is float32
+    image = image.astype(cp.float32)
 
-    # Compute MTP descriptors
-    for n in range(link.shape[0]):
-        corner = link[n, :]
-        x_slice = image[corner[0] - 1:corner[0] + rSize - 1, corner[1] - 1:corner[1] + cSize - 1]
-        ImgIntensity[:, n] = x_slice.reshape(-1)
+    # Allocate pattern outputs
+    Pmtp_pattern = cp.zeros((rSize, cSize), dtype=cp.float32)
+    Nmtp_pattern = cp.zeros((rSize, cSize), dtype=cp.float32)
 
-    medianMat = cp.median(ImgIntensity, axis=1)
+    # Launch kernel
+    # Get the current CUDA device
+    device = cp.cuda.Device()
+    # Get the maximum threads per block for the device
+    max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+    # Calculate the optimal block size (using a square block for simplicity)
+    block_size = int(cp.sqrt(max_threads_per_block))
+    # Ensure block_size is a multiple of 16 for better memory alignment
+    block_size = (block_size // 16) * 16
 
-    Pmtp = (ImgIntensity > (medianMat + t).reshape(-1, 1))
-    Nmtp = (ImgIntensity < (medianMat - t).reshape(-1, 1))
+    # Calculate grid dimensions
+    threads_per_block = (block_size, block_size)
+    blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
+
+    mtp_kernel(
+        blocks_per_grid,
+        threads_per_block,
+        (
+            image.ravel(),
+            Pmtp_pattern.ravel(),
+            Nmtp_pattern.ravel(),
+            rSize,
+            cSize,
+            cp.float32(t)
+        )
+    )
 
     imgDesc = [
-        {'fea': cp.dot(Pmtp.astype(cp.uint8), 1 << cp.arange(Pmtp.shape[1] - 1, -1, -1)).reshape(rSize, cSize)},
-        {'fea': cp.dot(Nmtp.astype(cp.uint8), 1 << cp.arange(Nmtp.shape[1] - 1, -1, -1)).reshape(rSize, cSize)}
+        {'fea': Pmtp_pattern.astype(cp.uint8)},
+        {'fea': Nmtp_pattern.astype(cp.uint8)}
     ]
 
     options['binVec'] = [cp.arange(256), cp.arange(256)]

@@ -31,9 +31,9 @@ def phogDescriptor_hist(bh, bv, L, bin):
     p = []
 
     # Compute histogram for level 0 (original image)
-    for b in range(1, bin + 1):
-        ind = (bh == b)
-        p.append(cp.sum(bv[ind]))  # Use cp.sum() for GPU operations
+    # Vectorized computation using bincount
+    bin_indices = cp.searchsorted(cp.arange(1, bin + 1), cp.ravel(bh))
+    p = cp.bincount(bin_indices, weights=cp.ravel(bv), minlength=bin)
 
     # Compute histograms for pyramid levels
     for l in range(1, L + 1):
@@ -49,16 +49,13 @@ def phogDescriptor_hist(bh, bv, L, bin):
                 bh_cella = bh[yy:yy + y, xx:xx + x]
                 bv_cella = bv[yy:yy + y, xx:xx + x]
 
-                # Compute histogram for each cell
-                for b in range(1, bin + 1):
-                    ind = (bh_cella == b)
-                    p.append(cp.sum(bv_cella[ind]))  # Use cp.sum() for GPU operations
+                # Compute histogram for each cell using vectorized operations
+                bin_indices = cp.searchsorted(cp.arange(1, bin + 1), cp.ravel(bh_cella))
+                cell_hist = cp.bincount(bin_indices, weights=cp.ravel(bv_cella), minlength=bin)
+                p = cp.concatenate([p, cell_hist])
 
                 yy += y
             xx += x
-
-    # Convert list to CuPy array
-    p = cp.array(p)
 
     # Normalize the histogram
     if cp.sum(p) != 0:

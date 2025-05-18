@@ -3,6 +3,77 @@ warnings.filterwarnings("ignore", category=FutureWarning, message=".*cupyx.jit.r
 import cupy as cp
 from lfepy.Validator import validate_image, validate_kwargs, validate_mode
 
+# Define the raw kernel for computing LAP patterns
+lap_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void compute_lap_patterns(
+    const float* image, 
+    float* pattern1, 
+    float* pattern2, 
+    int rows, 
+    int cols,
+    int image_width
+) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= cols || y >= rows) return;
+
+    // Link lists for pattern1 (4 pairs)
+    int linkList1[4][4] = {
+        {2, 2, 4, 4},
+        {2, 3, 4, 3},
+        {2, 4, 4, 2},
+        {3, 4, 3, 2}
+    };
+
+    // Link lists for pattern2 (8 pairs)
+    int linkList2[8][4] = {
+        {1, 1, 5, 5},
+        {1, 2, 5, 4},
+        {1, 3, 5, 3},
+        {1, 4, 5, 2},
+        {1, 5, 5, 1},
+        {2, 5, 4, 1},
+        {3, 5, 3, 1},
+        {4, 5, 2, 1}
+    };
+
+    int idx = y * cols + x;
+    float val1 = 0;
+    float val2 = 0;
+
+    // Compute pattern1
+    for (int n = 0; n < 4; ++n) {
+        int y1 = y + linkList1[n][0] - 1;
+        int x1 = x + linkList1[n][1] - 1;
+        int y2 = y + linkList1[n][2] - 1;
+        int x2 = x + linkList1[n][3] - 1;
+
+        float diff = image[y1 * image_width + x1] - image[y2 * image_width + x2];
+        if (diff > 0) {
+            val1 += (1 << (3 - n));
+        }
+    }
+
+    // Compute pattern2
+    for (int n = 0; n < 8; ++n) {
+        int y1 = y + linkList2[n][0] - 1;
+        int x1 = x + linkList2[n][1] - 1;
+        int y2 = y + linkList2[n][2] - 1;
+        int x2 = x + linkList2[n][3] - 1;
+
+        float diff = image[y1 * image_width + x1] - image[y2 * image_width + x2];
+        if (diff > 0) {
+            val2 += (1 << (7 - n));
+        }
+    }
+
+    pattern1[idx] = val1;
+    pattern2[idx] = val2;
+}
+''', 'compute_lap_patterns')
+
 
 def LAP(image, **kwargs):
     """
@@ -44,40 +115,55 @@ def LAP(image, **kwargs):
     options = validate_kwargs(**kwargs)
     options = validate_mode(options)
 
-    # Define patterns and compute descriptors
-    linkList1 = [[(2, 2), (4, 4)], [(2, 3), (4, 3)], [(2, 4), (4, 2)], [(3, 4), (3, 2)]]
-    linkList2 = [[(1, 1), (5, 5)], [(1, 2), (5, 4)], [(1, 3), (5, 3)], [(1, 4), (5, 2)],
-                 [(1, 5), (5, 1)], [(2, 5), (4, 1)], [(3, 5), (3, 1)], [(4, 5), (2, 1)]]
+    # Ensure image is float32
+    image = image.astype(cp.float32)
+
+    # Crop center region for output size
     x_c = image[2:-2, 2:-2]
     rSize, cSize = x_c.shape
-    pattern1 = cp.zeros_like(x_c)
 
-    for n in range(len(linkList1)):
-        corner1 = linkList1[n][0]
-        corner2 = linkList1[n][1]
-        x_1 = image[corner1[0] - 1:corner1[0] + rSize - 1, corner1[1] - 1:corner1[1] + cSize - 1]
-        x_2 = image[corner2[0] - 1:corner2[0] + rSize - 1, corner2[1] - 1:corner2[1] + cSize - 1]
-        pattern1 += ((x_1 - x_2) > 0).astype(float) * 2 ** (len(linkList1) - n - 1)
+    # Allocate pattern outputs
+    pattern1 = cp.zeros((rSize, cSize), dtype=cp.float32)
+    pattern2 = cp.zeros((rSize, cSize), dtype=cp.float32)
 
-    pattern2 = cp.zeros_like(x_c)
-    for n in range(len(linkList2)):
-        corner1 = linkList2[n][0]
-        corner2 = linkList2[n][1]
-        x_1 = image[corner1[0] - 1:corner1[0] + rSize - 1, corner1[1] - 1:corner1[1] + cSize - 1]
-        x_2 = image[corner2[0] - 1:corner2[0] + rSize - 1, corner2[1] - 1:corner2[1] + cSize - 1]
-        pattern2 += ((x_1 - x_2) > 0).astype(float) * 2 ** (len(linkList2) - n - 1)
+    # Launch kernel
+    # Get the current CUDA device
+    device = cp.cuda.Device()
+    # Get the maximum threads per block for the device
+    max_threads_per_block = device.attributes['MaxThreadsPerBlock']
+    # Calculate the optimal block size (using a square block for simplicity)
+    block_size = int(cp.sqrt(max_threads_per_block))
+    # Ensure block_size is a multiple of 16 for better memory alignment
+    block_size = (block_size // 16) * 16
 
-    imgDesc = [{'fea': pattern1}, {'fea': pattern2}]
+    # Calculate grid dimensions
+    threads_per_block = (block_size, block_size)
+    blocks_per_grid = ((cSize + block_size - 1) // block_size, (rSize + block_size - 1) // block_size)
+
+    lap_kernel(
+        blocks_per_grid,
+        threads_per_block,
+        (
+            image.ravel(),
+            pattern1.ravel(),
+            pattern2.ravel(),
+            rSize,
+            cSize,
+            image.shape[1]  # Original image width
+        )
+    )
+
+    imgDesc = [{'fea': pattern1.astype(cp.uint8)}, {'fea': pattern2.astype(cp.uint8)}]
 
     # Set bin vectors
-    binVec = [cp.arange(0, 2 ** len(linkList1)), cp.arange(0, 2 ** len(linkList2))]
+    binVec = [cp.arange(0, 2 ** 4), cp.arange(0, 2 ** 8)]  # 4 bits for pattern1, 8 bits for pattern2
     options['binVec'] = binVec
 
     # Compute LAP histogram
     LAP_hist = []
     for s in range(len(imgDesc)):
-        imgReg = cp.array(imgDesc[s]['fea'])
-        binVec = cp.array(options['binVec'][s])
+        imgReg = imgDesc[s]['fea']
+        binVec = options['binVec'][s]
         # Vectorized counting for each bin value
         hist, _ = cp.histogram(imgReg, bins=cp.append(binVec, cp.inf))
         LAP_hist.extend(hist)

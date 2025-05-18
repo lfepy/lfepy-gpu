@@ -1,6 +1,6 @@
 import cupy as cp
-from skimage.transform import resize
 from lfepy.Helper.construct_Gabor_filters import construct_Gabor_filters
+from skimage.transform import resize
 
 
 def filter_image_with_Gabor_bank(image, filter_bank, down_sampling_factor=64):
@@ -50,55 +50,63 @@ def filter_image_with_Gabor_bank(image, filter_bank, down_sampling_factor=64):
         print("The down-sampling factor needs to be a numeric value larger or equal than 1! Switching to defaults: 64")
         down_sampling_factor = 64
 
-    if 'spatial' not in filter_bank:
-        raise ValueError("Could not find filters in the spatial domain. Missing filter_bank['spatial']!")
-
-    if 'freq' not in filter_bank:
-        raise ValueError("Could not find filters in the frequency domain. Missing filter_bank['freq']!")
-
-    if 'orient' not in filter_bank:
-        raise ValueError("Could not determine angular resolution. Missing filter_bank['orient']!")
-
-    if 'scales' not in filter_bank:
-        raise ValueError("Could not determine frequency resolution. Missing filter_bank['scales']!")
-
     # Check filter bank fields
-    if not all(key in filter_bank for key in ['spatial', 'freq', 'orient', 'scales']):
+    required_fields = ['spatial', 'freq', 'orient', 'scales']
+    if not all(key in filter_bank for key in required_fields):
         raise ValueError("Filter bank missing required fields!")
-
-    filtered_image = []
 
     # Check image and filter size
     a, b = image.shape
-    c, d = filter_bank['spatial'][0][0].shape
+    c, d = filter_bank['spatial'].shape[-2:]
 
     if a == 2 * c or b == 2 * d:
         raise ValueError("The dimension of the input image and Gabor filters do not match!")
 
     # Compute output size
-    dim_spec_down_sampl = cp.round(cp.sqrt(down_sampling_factor))
-    new_size = (a // dim_spec_down_sampl.get(), b // dim_spec_down_sampl.get())
+    dim_spec_down_sampl = int(cp.round(cp.sqrt(down_sampling_factor)).get())
+    new_size = (a // dim_spec_down_sampl, b // dim_spec_down_sampl)
 
     # Filter image in the frequency domain
     image_tmp = cp.zeros((2 * a, 2 * b))
     image_tmp[:a, :b] = image
-    image = cp.fft.fft2(image_tmp)
+    image_fft = cp.fft.fft2(image_tmp)
 
-    for i in range(filter_bank['scales']):
-        for j in range(filter_bank['orient']):
-            # Filtering
-            Imgabout = cp.fft.ifft2(filter_bank['freq'][i][j] * image)
-            gabout = cp.abs(Imgabout[a:2 * a, b:2 * b])
+    # Reshape image_fft for broadcasting with filters
+    image_fft = image_fft[None, None, :, :]  # Shape: (1, 1, 2*a, 2*b)
 
-            # Down-sampling
-            y = cp.asarray(resize(gabout.get(), new_size, order=1))
+    # Filter image in frequency domain for all scales and orientations at once
+    filtered_fft = filter_bank['freq'] * image_fft
 
-            # Zero mean unit variance normalization
-            y = (y - cp.mean(y)) / cp.std(y)
-            y = y.ravel()
+    # Inverse FFT for all filters at once
+    filtered_spatial = cp.fft.ifft2(filtered_fft)
 
-            # Add to image
-            filtered_image.append(y)
+    # Extract the relevant portion and compute magnitude
+    # Shape: (num_of_scales, num_of_orient, a, b)
+    gabout = cp.abs(filtered_spatial[:, :, a:2 * a, b:2 * b])
 
-    filtered_image = cp.concatenate(filtered_image)
+    # First, reshape to combine scales and orientations
+    gabout_reshaped = gabout.reshape(-1, a, b)
+
+    # Create output array for down-sampled images
+    downsampled = cp.zeros((gabout_reshaped.shape[0], *new_size))
+
+    # Perform down-sampling using array operations
+    for i in range(gabout_reshaped.shape[0]):
+        # Reshape the image into blocks
+        blocks = gabout_reshaped[i].reshape(a // dim_spec_down_sampl, dim_spec_down_sampl,
+                                            b // dim_spec_down_sampl, dim_spec_down_sampl)
+        # Take mean of each block
+        downsampled[i] = cp.mean(blocks, axis=(1, 3))
+
+    # Reshape back to (num_of_scales, num_of_orient, new_height, new_width)
+    downsampled = downsampled.reshape(filter_bank['scales'], filter_bank['orient'], *new_size)
+
+    # Zero mean unit variance normalization for all filters at once
+    mean = cp.mean(downsampled, axis=(-2, -1), keepdims=True)
+    std = cp.std(downsampled, axis=(-2, -1), keepdims=True)
+    normalized = (downsampled - mean) / std
+
+    # Flatten and concatenate all features
+    filtered_image = normalized.reshape(-1)
+
     return filtered_image
