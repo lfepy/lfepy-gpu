@@ -1,6 +1,6 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: lfepy-gpu
-Version: 1.0.0
+Version: 1.0.1
 Summary: lfepy is a Python package for local feature extraction.
 Home-page: https://github.com/lfepy/lfepy-gpu
 Author: Dr. Prof. Khalid M. Hosny, MSc. Mahmoud A. Mohamed
@@ -15,6 +15,16 @@ Requires-Dist: cupy-cuda11x>=13.3.0
 Requires-Dist: numpy>=1.26.4
 Requires-Dist: scipy>=1.13.0
 Requires-Dist: scikit-image>=0.23.2
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
 
 # lfepy-gpu
 
