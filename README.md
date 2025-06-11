@@ -35,10 +35,6 @@
 To install lfepy, use the following command:
 
 ```bash
-pip install lfepy-gpu
-```
-or
-```bash
 pip install git+https://github.com/lfepy/lfepy-gpu.git
 ```
 ## Usage
